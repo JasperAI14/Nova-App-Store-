@@ -32,6 +32,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -110,6 +114,8 @@ fun AppStoreScreen(
     val selectedApp by viewModel.selectedApp.collectAsState()
     val appReviews by viewModel.selectedAppReviews.collectAsState()
     val userSession by viewModel.userSession.collectAsState()
+    val bookmarkedApps by viewModel.bookmarkedApps.collectAsState()
+    val isBookmarked = selectedApp?.let { app -> bookmarkedApps.any { it.id == app.id } } ?: false
 
     var activeSimulatorAppId by remember { mutableStateOf<String?>(null) }
 
@@ -133,6 +139,8 @@ fun AppStoreScreen(
                 installProgress = viewModel.installProgressMap[selectedApp!!.id],
                 isInstalling = viewModel.installingStateMap[selectedApp!!.id] ?: false,
                 isLoggedIn = userSession?.isLoggedIn == true,
+                isBookmarked = isBookmarked,
+                onToggleBookmark = { viewModel.toggleBookmark(selectedApp!!.id) },
                 onBack = { viewModel.selectApp(null) },
                 onInstall = { viewModel.simulateAppInstallation(selectedApp!!.id) },
                 onUninstall = { viewModel.uninstallApp(selectedApp!!.id) },
@@ -445,6 +453,8 @@ fun AppDetailsView(
     installProgress: Float?,
     isInstalling: Boolean,
     isLoggedIn: Boolean,
+    isBookmarked: Boolean,
+    onToggleBookmark: () -> Unit,
     onBack: () -> Unit,
     onInstall: () -> Unit,
     onUninstall: () -> Unit,
@@ -460,6 +470,7 @@ fun AppDetailsView(
             .background(Color(0xFF0D0B1C))
             .verticalScroll(scrollState)
     ) {
+        val context = LocalContext.current
         // App bar
         Row(
             modifier = Modifier
@@ -476,6 +487,37 @@ fun AppDetailsView(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
+            Spacer(modifier = Modifier.weight(1f))
+            if (isLoggedIn) {
+                IconButton(
+                    onClick = onToggleBookmark,
+                    modifier = Modifier.testTag("bookmark_app_button")
+                ) {
+                    Icon(
+                        imageVector = if (isBookmarked) Icons.Default.Star else Icons.Default.StarBorder,
+                        contentDescription = "Bookmark App",
+                        tint = if (isBookmarked) Color(0xFFFFD700) else Color.White
+                    )
+                }
+            }
+            IconButton(
+                onClick = {
+                    try {
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, "Check out ${app.name} on Nova Store! Download direct: https://ais-pre-oun3a6zto7xl44kdsnabnt-483043984572.europe-west2.run.app/?appId=${app.id}")
+                            type = "text/plain"
+                        }
+                        val shareIntent = Intent.createChooser(sendIntent, null)
+                        context.startActivity(shareIntent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Unable to share app link.", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.testTag("share_app_button")
+            ) {
+                Icon(imageVector = Icons.Default.Share, contentDescription = "Share App", tint = Color(0xFF00F5D4))
+            }
         }
 
         // Header Card
@@ -618,32 +660,36 @@ fun AppDetailsView(
                 modifier = Modifier.padding(bottom = 6.dp)
             )
 
-            val screenshots = when (app.category) {
-                "Productivity" -> listOf(
-                    "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
-                )
-                "Photography" -> listOf(
-                    "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1554080353-a576cf803bda?w=500&auto=format&fit=crop&q=60"
-                )
-                "Health" -> listOf(
-                    "https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=500&auto=format&fit=crop&q=60"
-                )
-                "Tools" -> listOf(
-                    "https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1531297484001-80022131f5a1?w=500&auto=format&fit=crop&q=60"
-                )
-                else -> listOf( // Arcade, RPG, Puzzle
-                    "https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=500&auto=format&fit=crop&q=60",
-                    "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=500&auto=format&fit=crop&q=60"
-                )
+            val screenshots = if (app.screenshotsCsv.isNotEmpty()) {
+                app.screenshotsCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            } else {
+                when (app.category) {
+                    "Productivity" -> listOf(
+                        "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
+                    )
+                    "Photography" -> listOf(
+                        "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1554080353-a576cf803bda?w=500&auto=format&fit=crop&q=60"
+                    )
+                    "Health" -> listOf(
+                        "https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=500&auto=format&fit=crop&q=60"
+                    )
+                    "Tools" -> listOf(
+                        "https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1531297484001-80022131f5a1?w=500&auto=format&fit=crop&q=60"
+                    )
+                    else -> listOf( // Arcade, RPG, Puzzle
+                        "https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=500&auto=format&fit=crop&q=60",
+                        "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=500&auto=format&fit=crop&q=60"
+                    )
+                }
             }
 
             LazyRow(
@@ -1080,10 +1126,10 @@ fun ChatAiSimulator() {
                         // delayed response
                         // To trigger instantly in compose state, we replace after simple math
                         val response = when {
-                            query.contains("app", ignoreCase = true) -> "Nova Mind AI store offers standard applications, high-graphics games, and a full developer hosting SDK portal!"
+                            query.contains("app", ignoreCase = true) -> "Nova App Store offers standard applications, high-graphics games, and a full developer hosting SDK portal!"
                             query.contains("game", ignoreCase = true) -> "Our game page offers retro-interactive classic compilations like Snake and Tap RPG natively compiled inside the app!"
                             query.contains("premium", ignoreCase = true) -> "Premium accounts unlock unlimited Gemini model usage, high-definition canvas rendering, and instant PNG downloads!"
-                            else -> "That sounds fascinating! As Nova Chat AI, I can confirm our failover priority guarantees 100% uptime utilizing smart API routing!"
+                            else -> "That sounds fascinating! As Nova Assistant, I can confirm our failover priority guarantees 100% uptime utilizing smart API routing!"
                         }
                         messages[botIndex] = "AI Bot" to response
                     }

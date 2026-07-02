@@ -20,7 +20,9 @@ data class AppEntity(
     val sizeMb: Float,
     val apkFileName: String,
     val isUserUploaded: Boolean = false,
-    val scanResult: String = "Clean (0/72 engines flagged)" // VirusTotal simulated scanning result
+    val scanResult: String = "Clean (0/72 engines flagged)", // VirusTotal simulated scanning result
+    val screenshotsCsv: String = "",
+    val uploadedByEmail: String = ""
 )
 
 @Entity(tableName = "reviews")
@@ -39,7 +41,22 @@ data class GeneratedImageEntity(
     val prompt: String,
     val base64Data: String,
     val providerUsed: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val userEmail: String = ""
+)
+
+@Entity(tableName = "user_profiles")
+data class UserProfileEntity(
+    @PrimaryKey val email: String,
+    val displayName: String,
+    val avatarUrl: String,
+    val isPremium: Boolean = false,
+    val sharesCount: Int = 0,
+    val bonusGenerations: Int = 0,
+    val dailyGenerationsUsed: Int = 0,
+    val lastResetTimestamp: Long = System.currentTimeMillis(),
+    val promoCode: String = "",
+    val dailyUploadsUsed: Int = 0
 )
 
 @Entity(tableName = "user_session")
@@ -57,3 +74,21 @@ data class UserSessionEntity(
     val promoCode: String = "",
     val dailyUploadsUsed: Int = 0
 )
+
+@Entity(tableName = "bookmarks")
+data class BookmarkEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val appId: String,
+    val userEmail: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "referrals")
+data class ReferralEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val referrerEmail: String,
+    val referredEmail: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+

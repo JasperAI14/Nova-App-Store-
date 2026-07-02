@@ -88,6 +88,8 @@ fun GameStoreScreen(
     val selectedApp by viewModel.selectedApp.collectAsState()
     val appReviews by viewModel.selectedAppReviews.collectAsState()
     val userSession by viewModel.userSession.collectAsState()
+    val bookmarkedApps by viewModel.bookmarkedApps.collectAsState()
+    val isBookmarked = selectedApp?.let { app -> bookmarkedApps.any { it.id == app.id } } ?: false
 
     var activeGameId by remember { mutableStateOf<String?>(null) }
 
@@ -111,6 +113,8 @@ fun GameStoreScreen(
                 installProgress = viewModel.installProgressMap[selectedApp!!.id],
                 isInstalling = viewModel.installingStateMap[selectedApp!!.id] ?: false,
                 isLoggedIn = userSession?.isLoggedIn == true,
+                isBookmarked = isBookmarked,
+                onToggleBookmark = { viewModel.toggleBookmark(selectedApp!!.id) },
                 onBack = { viewModel.selectApp(null) },
                 onInstall = { viewModel.simulateAppInstallation(selectedApp!!.id) },
                 onUninstall = { viewModel.uninstallApp(selectedApp!!.id) },

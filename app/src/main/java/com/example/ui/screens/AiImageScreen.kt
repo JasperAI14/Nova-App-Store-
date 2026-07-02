@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -133,7 +134,7 @@ fun AiImageScreen(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
-                        text = "Nova Mind AI Studio",
+                        text = "Nova Image Studio",
                         color = Color.White,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.ExtraBold
@@ -221,14 +222,14 @@ fun AiImageScreen(
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text("Refer & Earn Tokens", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        Text("Share Nova Mind to earn +1 bonus image allocation instantly!", color = Color(0xFFB0AEC6), fontSize = 10.sp)
+                                        Text("Share Nova App Store to earn +1 bonus image allocation instantly!", color = Color(0xFFB0AEC6), fontSize = 10.sp)
                                     }
                                     Button(
                                         onClick = {
                                             try {
                                                 val sendIntent = Intent().apply {
                                                     action = Intent.ACTION_SEND
-                                                    putExtra(Intent.EXTRA_TEXT, "Try Nova Mind AI — discover apps, games, and AI image generation in one place. Install now: https://ais-pre-oun3a6zto7xl44kdsnabnt-483043984572.europe-west2.run.app")
+                                                    putExtra(Intent.EXTRA_TEXT, "Try Nova App Store — discover apps, games, and AI image generation in one place. Install now: https://ais-pre-oun3a6zto7xl44kdsnabnt-483043984572.europe-west2.run.app")
                                                     type = "text/plain"
                                                 }
                                                 val shareIntent = Intent.createChooser(sendIntent, null)
@@ -472,7 +473,7 @@ fun AiImageScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(savedImages) { entity ->
-                            SavedImageCard(entity = entity)
+                            SavedImageCard(entity = entity, onDelete = { viewModel.deleteImage(entity.id) })
                         }
                     }
                 }
@@ -482,13 +483,13 @@ fun AiImageScreen(
 }
 
 @Composable
-fun SavedImageCard(entity: GeneratedImageEntity) {
+fun SavedImageCard(entity: GeneratedImageEntity, onDelete: () -> Unit) {
     val imageBitmap = remember(entity.base64Data) {
         decodeBase64ToImageBitmap(entity.base64Data)
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("saved_image_card_${entity.id}"),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF16132D))
     ) {
         Column {
@@ -514,6 +515,23 @@ fun SavedImageCard(entity: GeneratedImageEntity) {
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(entity.providerUsed, color = Color(0xFF00FFFF), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .clickable { onDelete() }
+                        .padding(6.dp)
+                        .testTag("delete_image_button_${entity.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete Art",
+                        tint = Color(0xFFFF4444),
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
             }
             Column(modifier = Modifier.padding(8.dp)) {

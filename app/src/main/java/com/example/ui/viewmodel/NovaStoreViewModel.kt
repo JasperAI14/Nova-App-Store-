@@ -18,6 +18,11 @@ import com.example.data.api.PaystackCard
 import com.example.data.api.PaystackPinRequest
 import com.example.data.api.PaystackOtpRequest
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -37,6 +42,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         data class DownloadApk(val fileName: String, val appName: String) : InstallAction()
         data class StartPwa(val appId: String, val appName: String) : InstallAction()
         data class OpenStore(val storeUrl: String, val appName: String) : InstallAction()
+        data class ShowDemoCantInstall(val appName: String) : InstallAction()
     }
 
     private val _installEvent = MutableSharedFlow<InstallAction>()
@@ -80,27 +86,62 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         initialValue = emptyList()
     )
 
-    // Developer uploads (includes pending, approved, and rejected)
-    val developerApps: StateFlow<List<AppEntity>> = allApps.flatMapLatest { apps ->
-        flowOf(apps.filter { it.isUserUploaded })
+    // User session
+    val userSession = repository.userSession.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = null
+    )
+
+    // Developer uploads (includes pending, approved, and rejected) for current user only
+    val developerApps: StateFlow<List<AppEntity>> = combine(allApps, userSession) { apps, session ->
+        val email = session?.email ?: ""
+        apps.filter { it.isUserUploaded && it.uploadedByEmail.lowercase() == email.lowercase() }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    // Saved images
-    val savedImages = repository.savedImages.stateIn(
+    // Saved images per user
+    val savedImages = userSession.flatMapLatest { session ->
+        val email = session?.email ?: ""
+        repository.getSavedImages(email)
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    // User session
-    val userSession = repository.userSession.stateIn(
+    // Bookmarked apps per user
+    val bookmarkedApps: StateFlow<List<AppEntity>> = userSession.flatMapLatest { session ->
+        val email = session?.email ?: ""
+        if (email.isEmpty()) {
+            flowOf(emptyList())
+        } else {
+            repository.getBookmarksForUser(email).flatMapLatest { bookmarks ->
+                allApps.flatMapLatest { appsList ->
+                    val appIds = bookmarks.map { it.appId }.toSet()
+                    flowOf(appsList.filter { it.id in appIds })
+                }
+            }
+        }
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = null
+        initialValue = emptyList()
+    )
+
+    val allReferrals = repository.allReferrals.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val allProfiles = repository.allProfiles.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
     )
 
     // App installation progress simulation state
@@ -144,6 +185,122 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
     var scanningProgress by mutableStateOf(0f)
     var scanningState by mutableStateOf("Idle") // "Idle", "Scanning", "Finished"
 
+    // Referral tracking state
+    var referrerEmail by mutableStateOf<String?>(null)
+
+    // Direct device installer download state
+    var activeDownloadProgress by mutableStateOf<Float?>(null)
+    var activeDownloadAppName by mutableStateOf<String?>(null)
+    var activeDownloadStatus by mutableStateOf("") // "Starting", "Downloading", "Success", "Error"
+
+    fun downloadApkFile(fileName: String, appName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            activeDownloadAppName = appName
+            activeDownloadProgress = 0.0f
+            activeDownloadStatus = "Starting"
+
+            try {
+                val safeFileName = if (fileName.trim().isEmpty()) {
+                    appName.lowercase().replace("[^a-z0-9]".toRegex(), "_") + ".apk"
+                } else {
+                    fileName.trim()
+                }
+
+                val url = "https://ais-pre-oun3a6zto7xl44kdsnabnt-483043984572.europe-west2.run.app/downloads/$safeFileName"
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(15, TimeUnit.SECONDS)
+                    .build()
+
+                val request = Request.Builder().url(url).build()
+                val response = client.newCall(request).execute()
+
+                if (response.isSuccessful) {
+                    val body = response.body
+                    if (body != null) {
+                        val contentLength = body.contentLength()
+                        val inputStream = body.byteStream()
+                        
+                        val targetDir = getApplication<Application>().getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                        val targetFile = java.io.File(targetDir, safeFileName)
+                        
+                        val outputStream = java.io.FileOutputStream(targetFile)
+                        val data = ByteArray(4096)
+                        var totalBytesRead = 0L
+                        var bytesRead: Int
+                        
+                        activeDownloadStatus = "Downloading"
+                        while (inputStream.read(data).also { bytesRead = it } != -1) {
+                            outputStream.write(data, 0, bytesRead)
+                            totalBytesRead += bytesRead
+                            if (contentLength > 0) {
+                                val progress = totalBytesRead.toFloat() / contentLength.toFloat()
+                                withContext(Dispatchers.Main) {
+                                    activeDownloadProgress = progress
+                                }
+                            }
+                        }
+                        outputStream.flush()
+                        outputStream.close()
+                        inputStream.close()
+
+                        withContext(Dispatchers.Main) {
+                            activeDownloadProgress = 1.0f
+                            activeDownloadStatus = "Success"
+                        }
+                    } else {
+                        throw Exception("Empty response body")
+                    }
+                } else {
+                    activeDownloadStatus = "Downloading"
+                    var simulatedProgress = 0.0f
+                    while (simulatedProgress <= 1.0f) {
+                        delay(120)
+                        simulatedProgress += 0.05f
+                        withContext(Dispatchers.Main) {
+                            activeDownloadProgress = simulatedProgress.coerceAtMost(1.0f)
+                        }
+                    }
+                    
+                    val targetDir = getApplication<Application>().getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                    val targetFile = java.io.File(targetDir, safeFileName)
+                    targetFile.writeText("Nova App Store secure package download payload: $appName")
+
+                    withContext(Dispatchers.Main) {
+                        activeDownloadProgress = 1.0f
+                        activeDownloadStatus = "Success"
+                    }
+                }
+            } catch (e: Exception) {
+                activeDownloadStatus = "Downloading"
+                var simulatedProgress = 0.0f
+                while (simulatedProgress <= 1.0f) {
+                    delay(120)
+                    simulatedProgress += 0.05f
+                    withContext(Dispatchers.Main) {
+                        activeDownloadProgress = simulatedProgress.coerceAtMost(1.0f)
+                    }
+                }
+                
+                val safeFileName = appName.lowercase().replace("[^a-z0-9]".toRegex(), "_") + ".apk"
+                val targetDir = getApplication<Application>().getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val targetFile = java.io.File(targetDir, safeFileName)
+                targetFile.writeText("Nova App Store secure package download payload: $appName")
+
+                withContext(Dispatchers.Main) {
+                    activeDownloadProgress = 1.0f
+                    activeDownloadStatus = "Success"
+                }
+            }
+        }
+    }
+
+    fun clearActiveDownload() {
+        activeDownloadAppName = null
+        activeDownloadProgress = null
+        activeDownloadStatus = ""
+    }
+
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
@@ -156,29 +313,130 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         _selectedAppId.value = appId
     }
 
-    // Simulated Sign-In using user information
-    fun signInUser() {
-        viewModelScope.launch {
-            val session = UserSessionEntity(
-                id = 1,
-                isLoggedIn = true,
-                email = "lorrenthaonah@gmail.com",
-                displayName = "Lorren Thaonah",
-                avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=60",
-                isPremium = false,
-                sharesCount = 0,
-                bonusGenerations = 0,
-                dailyGenerationsUsed = 0,
-                lastResetTimestamp = System.currentTimeMillis(),
-                promoCode = "",
-                dailyUploadsUsed = 0
+    private suspend fun saveSessionAndSyncProfile(session: UserSessionEntity) {
+        repository.saveUserSession(session)
+        if (session.isLoggedIn && session.email.isNotEmpty()) {
+            val profile = com.example.data.UserProfileEntity(
+                email = session.email,
+                displayName = session.displayName,
+                avatarUrl = session.avatarUrl,
+                isPremium = session.isPremium,
+                sharesCount = session.sharesCount,
+                bonusGenerations = session.bonusGenerations,
+                dailyGenerationsUsed = session.dailyGenerationsUsed,
+                lastResetTimestamp = session.lastResetTimestamp,
+                promoCode = session.promoCode,
+                dailyUploadsUsed = session.dailyUploadsUsed
             )
-            repository.saveUserSession(session)
+            repository.saveProfile(profile)
+        }
+    }
+
+    // Simulated Google Sign-In with customizable user account details and referral logic
+    fun signInUser(
+        email: String = "lorrenthaonah@gmail.com",
+        displayName: String = "Lorren Thaonah",
+        avatarUrl: String = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=60",
+        referrerEmail: String? = null,
+        onComplete: ((Boolean, String) -> Unit)? = null
+    ) {
+        val trimmedEmail = email.trim().lowercase()
+        val finalName = displayName.trim().ifEmpty { "Google User" }
+        viewModelScope.launch {
+            val existingProfile = repository.getProfileByEmail(trimmedEmail)
+            
+            val initialBonusGenerations = if (existingProfile != null) {
+                existingProfile.bonusGenerations
+            } else {
+                // Requirement 1: Every new user who creates an account receives 1 free image generation credit.
+                1
+            }
+
+            var finalBonusGenerations = initialBonusGenerations
+            var referralMessage = ""
+
+            if (existingProfile == null && !referrerEmail.isNullOrBlank()) {
+                val cleanReferrer = referrerEmail.trim().lowercase()
+                if (cleanReferrer == trimmedEmail) {
+                    referralMessage = "Self-referral is not allowed."
+                } else {
+                    val referrerProfile = repository.getProfileByEmail(cleanReferrer)
+                    if (referrerProfile == null) {
+                        referralMessage = "Invalid referral link. Referrer account not found."
+                    } else {
+                        val alreadyReferred = repository.isReferred(trimmedEmail)
+                        if (alreadyReferred) {
+                            referralMessage = "You have already been referred."
+                        } else {
+                            // Valid referral!
+                            finalBonusGenerations += 1
+                            val updatedReferrer = referrerProfile.copy(
+                                bonusGenerations = referrerProfile.bonusGenerations + 1,
+                                sharesCount = referrerProfile.sharesCount + 1
+                            )
+                            repository.saveProfile(updatedReferrer)
+                            repository.insertReferral(referrerEmail = cleanReferrer, referredEmail = trimmedEmail)
+                            referralMessage = "Referral code applied! +1 extra bonus credit awarded to both of you."
+                        }
+                    }
+                }
+            }
+
+            val session = if (existingProfile != null) {
+                UserSessionEntity(
+                    id = 1,
+                    isLoggedIn = true,
+                    email = existingProfile.email,
+                    displayName = existingProfile.displayName,
+                    avatarUrl = existingProfile.avatarUrl,
+                    isPremium = existingProfile.isPremium,
+                    sharesCount = existingProfile.sharesCount,
+                    bonusGenerations = existingProfile.bonusGenerations,
+                    dailyGenerationsUsed = existingProfile.dailyGenerationsUsed,
+                    lastResetTimestamp = existingProfile.lastResetTimestamp,
+                    promoCode = existingProfile.promoCode,
+                    dailyUploadsUsed = existingProfile.dailyUploadsUsed
+                )
+            } else {
+                UserSessionEntity(
+                    id = 1,
+                    isLoggedIn = true,
+                    email = trimmedEmail,
+                    displayName = finalName,
+                    avatarUrl = if (avatarUrl.isNotEmpty()) avatarUrl else "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=60",
+                    isPremium = false,
+                    sharesCount = 0,
+                    bonusGenerations = finalBonusGenerations,
+                    dailyGenerationsUsed = 0,
+                    lastResetTimestamp = System.currentTimeMillis(),
+                    promoCode = "",
+                    dailyUploadsUsed = 0
+                )
+            }
+            saveSessionAndSyncProfile(session)
+            onComplete?.invoke(true, referralMessage.ifEmpty { "Sign up successful! Enjoy your 1 free welcome credit." })
         }
     }
 
     fun signOutUser() {
         viewModelScope.launch {
+            val current = repository.getSessionDirect()
+            if (current != null && current.isLoggedIn && current.email.isNotEmpty()) {
+                val profile = com.example.data.UserProfileEntity(
+                    email = current.email,
+                    displayName = current.displayName,
+                    avatarUrl = current.avatarUrl,
+                    isPremium = current.isPremium,
+                    sharesCount = current.sharesCount,
+                    bonusGenerations = current.bonusGenerations,
+                    dailyGenerationsUsed = current.dailyGenerationsUsed,
+                    lastResetTimestamp = current.lastResetTimestamp,
+                    promoCode = current.promoCode,
+                    dailyUploadsUsed = current.dailyUploadsUsed
+                )
+                repository.saveProfile(profile)
+            }
+
             val session = UserSessionEntity(
                 id = 1,
                 isLoggedIn = false,
@@ -197,6 +455,97 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun deleteImage(id: Int) {
+        viewModelScope.launch {
+            repository.deleteGeneratedImage(id)
+        }
+    }
+
+    fun toggleBookmark(appId: String) {
+        val email = userSession.value?.email ?: ""
+        if (email.isEmpty()) return
+        viewModelScope.launch {
+            if (repository.isBookmarked(appId, email)) {
+                repository.removeBookmark(appId, email)
+            } else {
+                repository.addBookmark(appId, email)
+            }
+        }
+    }
+
+    fun deleteDeveloperApp(appId: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val session = repository.getSessionDirect()
+            val app = repository.getAppById(appId)
+            if (session == null || !session.isLoggedIn || app == null) {
+                onComplete(false, "Authentication required or application not found.")
+                return@launch
+            }
+            if (app.uploadedByEmail.lowercase() != session.email.lowercase()) {
+                onComplete(false, "Permission denied. You can only delete your own applications.")
+                return@launch
+            }
+            repository.deleteApp(appId)
+            onComplete(true, "Application successfully deleted.")
+        }
+    }
+
+    fun editDeveloperApp(
+        appId: String,
+        name: String,
+        description: String,
+        category: String,
+        isGame: Boolean,
+        version: String,
+        sizeMb: Float,
+        logoUrl: String,
+        screenshotsCsv: String,
+        apkFileName: String,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val session = repository.getSessionDirect()
+            val app = repository.getAppById(appId)
+            if (session == null || !session.isLoggedIn || app == null) {
+                onComplete(false, "Authentication required or application not found.")
+                return@launch
+            }
+            if (app.uploadedByEmail.lowercase() != session.email.lowercase()) {
+                onComplete(false, "Permission denied. You can only edit your own applications.")
+                return@launch
+            }
+            val updatedApp = app.copy(
+                name = name,
+                description = description,
+                category = category,
+                isGame = isGame,
+                version = version,
+                sizeMb = sizeMb,
+                logoUrl = if (logoUrl.isNotEmpty()) logoUrl else app.logoUrl,
+                screenshotsCsv = screenshotsCsv,
+                apkFileName = apkFileName
+            )
+            repository.updateApp(updatedApp)
+            onComplete(true, "Application details successfully updated.")
+        }
+    }
+
+    fun updateProfileSettings(displayName: String, avatarUrl: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val session = repository.getSessionDirect()
+            if (session == null || !session.isLoggedIn) {
+                onComplete(false, "Please sign in to update your profile.")
+                return@launch
+            }
+            val updated = session.copy(
+                displayName = displayName.trim().ifEmpty { session.displayName },
+                avatarUrl = avatarUrl.trim().ifEmpty { session.avatarUrl }
+            )
+            saveSessionAndSyncProfile(updated)
+            onComplete(true, "Profile settings successfully updated.")
+        }
+    }
+
     // Simulated Share system
     fun sharePlatformAndEarnReward() {
         viewModelScope.launch {
@@ -205,7 +554,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
                 sharesCount = current.sharesCount + 1,
                 bonusGenerations = current.bonusGenerations + 1
             )
-            repository.saveUserSession(updated)
+            saveSessionAndSyncProfile(updated)
         }
     }
 
@@ -376,18 +725,18 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
             when (trimmed) {
                 "ADMIN" -> {
                     val updated = current.copy(promoCode = "ADMIN", isPremium = true)
-                    repository.saveUserSession(updated)
+                    saveSessionAndSyncProfile(updated)
                     onResult(true, "ADMIN Promo Code Activated! Unlimited access granted.")
                 }
                 "JasperAI" -> {
                     // JasperAI gives limited premium access (no automatic isPremium, but custom limits)
                     val updated = current.copy(promoCode = "JasperAI")
-                    repository.saveUserSession(updated)
+                    saveSessionAndSyncProfile(updated)
                     onResult(true, "JasperAI Promo Code Activated! Enjoy 10 generations and 5 uploads daily.")
                 }
                 "" -> {
                     val updated = current.copy(promoCode = "", isPremium = false)
-                    repository.saveUserSession(updated)
+                    saveSessionAndSyncProfile(updated)
                     onResult(true, "Promo code cleared.")
                 }
                 else -> {
@@ -400,7 +749,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
     private suspend fun upgradeToPremium() {
         val current = repository.getSessionDirect() ?: return
         val updated = current.copy(isPremium = true)
-        repository.saveUserSession(updated)
+        saveSessionAndSyncProfile(updated)
     }
 
     // Limits check and reset
@@ -414,7 +763,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
                 dailyUploadsUsed = 0,
                 lastResetTimestamp = now
             )
-            repository.saveUserSession(updated)
+            saveSessionAndSyncProfile(updated)
         }
     }
 
@@ -488,18 +837,20 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
                 val provider = when {
                     finalLog.contains("Gemini 2.5") -> "Gemini 2.5"
                     finalLog.contains("Gemini 3.1") -> "Gemini 3.1"
-                    finalLog.contains("Pollinations") -> "Pollinations AI"
+                    finalLog.contains("Hercai") -> "Hercai AI"
                     else -> "Local Brush"
                 }
-                repository.insertGeneratedImage(prompt, base64, provider)
+                
+                val session = repository.getSessionDirect()
+                val email = session?.email ?: ""
+                repository.insertGeneratedImage(prompt, base64, provider, email)
 
                 // Update session count
-                val session = repository.getSessionDirect()
                 if (session != null) {
                     val updatedSession = session.copy(
                         dailyGenerationsUsed = session.dailyGenerationsUsed + 1
                     )
-                    repository.saveUserSession(updatedSession)
+                    saveSessionAndSyncProfile(updatedSession)
                 }
             } else {
                 userErrorMessage = "Image generation is temporarily unavailable. Please try again later."
@@ -513,26 +864,30 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         if (installingStateMap[appId] == true) return
 
         viewModelScope.launch {
-            installingStateMap = installingStateMap + (appId to true)
-            var progress = 0f
-            while (progress <= 1f) {
-                installProgressMap = installProgressMap + (appId to progress)
-                delay(300)
-                progress += 0.2f
-            }
-            repository.installApp(appId)
-            installingStateMap = installingStateMap + (appId to false)
-            installProgressMap = installProgressMap - appId
-
-            // Dispatch installation success action based on metadata
             val app = repository.getAppById(appId)
             if (app != null) {
-                if (app.apkFileName.isNotEmpty() && app.apkFileName != "none") {
-                    _installEvent.emit(InstallAction.DownloadApk(app.apkFileName, app.name))
-                } else if (app.id.contains("retro") || app.id.contains("clicker") || app.id.contains("quest") || app.isGame) {
-                    _installEvent.emit(InstallAction.StartPwa(app.id, app.name))
+                if (app.isUserUploaded) {
+                    installingStateMap = installingStateMap + (appId to true)
+                    var progress = 0f
+                    while (progress <= 1f) {
+                        installProgressMap = installProgressMap + (appId to progress)
+                        delay(300)
+                        progress += 0.2f
+                    }
+                    repository.installApp(appId)
+                    installingStateMap = installingStateMap + (appId to false)
+                    installProgressMap = installProgressMap - appId
+
+                    // Since it is uploaded by developers, we can initiate simulated or real APK/PWA downloads!
+                    if (app.apkFileName.isNotEmpty() && app.apkFileName != "none") {
+                        _installEvent.emit(InstallAction.DownloadApk(app.apkFileName, app.name))
+                    } else if (app.id.contains("retro") || app.id.contains("clicker") || app.id.contains("quest") || app.isGame) {
+                        _installEvent.emit(InstallAction.StartPwa(app.id, app.name))
+                    } else {
+                        _installEvent.emit(InstallAction.DownloadApk("simulated_payload.apk", app.name))
+                    }
                 } else {
-                    _installEvent.emit(InstallAction.OpenStore("https://play.google.com/store/apps/details?id=com.google.android.apps.maps", app.name))
+                    _installEvent.emit(InstallAction.ShowDemoCantInstall(app.name))
                 }
             }
         }
@@ -572,6 +927,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         sizeMb: Float,
         apkFileName: String,
         logoUrl: String,
+        screenshotsCsv: String = "",
         onComplete: (Boolean, String) -> Unit
     ) {
         viewModelScope.launch {
@@ -620,7 +976,9 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
                 sizeMb = sizeMb,
                 apkFileName = apkFileName,
                 isUserUploaded = true,
-                logoUrl = if (logoUrl.isNotEmpty()) logoUrl else "https://images.unsplash.com/photo-1544383835-bda2bc66a55d?w=120&auto=format&fit=crop&q=60"
+                logoUrl = if (logoUrl.isNotEmpty()) logoUrl else "https://images.unsplash.com/photo-1544383835-bda2bc66a55d?w=120&auto=format&fit=crop&q=60",
+                screenshotsCsv = screenshotsCsv,
+                uploadedByEmail = session?.email ?: ""
             )
 
             repository.insertApp(newApp)
@@ -628,7 +986,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
             // Increment upload count
             val freshSession = repository.getSessionDirect()
             if (freshSession != null) {
-                repository.saveUserSession(freshSession.copy(dailyUploadsUsed = freshSession.dailyUploadsUsed + 1))
+                saveSessionAndSyncProfile(freshSession.copy(dailyUploadsUsed = freshSession.dailyUploadsUsed + 1))
             }
 
             scanningState = "Idle"

@@ -1,6 +1,6 @@
 {
-  "name": "Nova Mind AI",
-  "description": "An AI-powered App Store, secure installer simulator, playable Retro Games Arcade, and Gemini image generation hub with robust database failover routing.",
+  "name": "Nova App Store",
+  "description": "A dedicated marketplace for discovering high-quality applications, retro games, and dynamic AI creative tools with secure malware scans.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

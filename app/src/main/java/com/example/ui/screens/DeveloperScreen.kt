@@ -24,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AppRegistration
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Info
@@ -90,15 +92,20 @@ fun DeveloperScreen(
     var sizeMb by remember { mutableStateOf("12.5") }
     var apkFileName by remember { mutableStateOf("build_dist.apk") }
     var logoUrl by remember { mutableStateOf("") }
+    var screenshotsCsv by remember { mutableStateOf("") }
 
     var isUploading by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFF0D0B1C))
-            .verticalScroll(scrollState)
-    ) {
+    var appToEdit by remember { mutableStateOf<AppEntity?>(null) }
+    var appToDelete by remember { mutableStateOf<AppEntity?>(null) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(Color(0xFF0D0B1C))
+                .verticalScroll(scrollState)
+        ) {
         // --- HEADER ---
         Box(
             modifier = Modifier
@@ -269,11 +276,22 @@ fun DeveloperScreen(
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
-
                         // Logo URL & APK bundle Name
                         DeveloperField(label = "Icon Drawable/URL", value = logoUrl, onValueChange = { logoUrl = it }, placeholder = "https://images.unsplash.com/... (optional)")
                         Spacer(modifier = Modifier.height(12.dp))
-                        DeveloperField(label = "APK Package File Name", value = apkFileName, onValueChange = { apkFileName = it }, placeholder = "my_app_payload.apk")
+
+                        DeveloperField(label = "Screenshots URL List (Optional, Comma-Separated)", value = screenshotsCsv, onValueChange = { screenshotsCsv = it }, placeholder = "e.g., https://img1.com, https://img2.com")
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        DeveloperField(label = "APK Package File Name (Required)", value = apkFileName, onValueChange = { apkFileName = it }, placeholder = "my_app_payload.apk")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Requirements Note: APK package format is REQUIRED. Because this platform delivers offline-executable, direct device installer packages that bypass conventional stores, pure APK packages are the best option for instant on-device installation.",
+                            color = Color(0xFF00F5D4).copy(alpha = 0.9f),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 14.sp
+                        )
 
                         Spacer(modifier = Modifier.height(18.dp))
 
@@ -282,6 +300,10 @@ fun DeveloperScreen(
                             onClick = {
                                 if (appName.isBlank() || description.isBlank()) {
                                     Toast.makeText(context, "Please complete App Name and Description.", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                if (!apkFileName.endsWith(".apk")) {
+                                    Toast.makeText(context, "Error: App bundle must be a valid APK package! Please specify an .apk file.", Toast.LENGTH_LONG).show()
                                     return@Button
                                 }
                                 isUploading = true
@@ -294,13 +316,15 @@ fun DeveloperScreen(
                                     developer = developerName,
                                     sizeMb = sizeMb.toFloatOrNull() ?: 10.5f,
                                     apkFileName = apkFileName,
-                                    logoUrl = logoUrl
+                                    logoUrl = logoUrl,
+                                    screenshotsCsv = screenshotsCsv
                                 ) { success, msg ->
                                     isUploading = false
                                     if (success) {
                                         appName = ""
                                         description = ""
                                         logoUrl = ""
+                                        screenshotsCsv = ""
                                     }
                                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                 }
@@ -379,7 +403,11 @@ fun DeveloperScreen(
                     }
                 } else {
                     developerApps.forEach { devApp ->
-                        DeveloperAppTrackItem(app = devApp)
+                        DeveloperAppTrackItem(
+                            app = devApp,
+                            onEditClick = { appToEdit = devApp },
+                            onDeleteClick = { appToDelete = devApp }
+                        )
                     }
                 }
 
@@ -423,6 +451,200 @@ fun DeveloperScreen(
                 Spacer(modifier = Modifier.height(40.dp))
             }
         }
+
+        // --- EDIT APP DIALOG OVERLAY ---
+        val appEditing = appToEdit
+        if (appEditing != null) {
+            var editName by remember(appEditing) { mutableStateOf(appEditing.name) }
+            var editDescription by remember(appEditing) { mutableStateOf(appEditing.description) }
+            var editCategory by remember(appEditing) { mutableStateOf(appEditing.category) }
+            var editIsGame by remember(appEditing) { mutableStateOf(appEditing.isGame) }
+            var editVersion by remember(appEditing) { mutableStateOf(appEditing.version) }
+            var editSize by remember(appEditing) { mutableStateOf(appEditing.sizeMb.toString()) }
+            var editLogoUrl by remember(appEditing) { mutableStateOf(appEditing.logoUrl) }
+            var editScreenshots by remember(appEditing) { mutableStateOf(appEditing.screenshotsCsv) }
+            var editApkName by remember(appEditing) { mutableStateOf(appEditing.apkFileName) }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .clickable(enabled = true) { /* prevent click through */ }
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .border(1.dp, Color(0xFF00F5D4).copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF131026))
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Text(
+                            text = "Edit Application Details",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        DeveloperField(label = "Application Name", value = editName, onValueChange = { editName = it }, placeholder = "e.g. FitTrack", testTag = "edit_app_name")
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        DeveloperField(label = "Description", value = editDescription, onValueChange = { editDescription = it }, placeholder = "e.g. Healthy life daily planner", testTag = "edit_app_desc")
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        DeveloperField(label = "Category", value = editCategory, onValueChange = { editCategory = it }, placeholder = "e.g. Productivity, Finance", testTag = "edit_app_category")
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF0F0C20), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text("Is Game?", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = editIsGame,
+                                onCheckedChange = { editIsGame = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color(0xFF00F5D4),
+                                    checkedTrackColor = Color(0xFF00F5D4).copy(alpha = 0.4f),
+                                    uncheckedThumbColor = Color.Gray,
+                                    uncheckedTrackColor = Color.DarkGray
+                                ),
+                                modifier = Modifier.testTag("edit_app_is_game")
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        DeveloperField(label = "Version Code", value = editVersion, onValueChange = { editVersion = it }, placeholder = "1.0.0", testTag = "edit_app_version")
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        DeveloperField(label = "Size (MB)", value = editSize, onValueChange = { editSize = it }, placeholder = "15.0", testTag = "edit_app_size")
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        DeveloperField(label = "Launcher Logo URL (Optional)", value = editLogoUrl, onValueChange = { editLogoUrl = it }, placeholder = "Image web address", testTag = "edit_logo_url")
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        DeveloperField(label = "Screenshot URLs (CSV, Optional)", value = editScreenshots, onValueChange = { editScreenshots = it }, placeholder = "comma separated URLs", testTag = "edit_screenshots")
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        DeveloperField(label = "APK Filename", value = editApkName, onValueChange = { editApkName = it }, placeholder = "app.apk", testTag = "edit_apk_name")
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Button(
+                                onClick = { appToEdit = null },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E2A4F)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Cancel", color = Color.White)
+                            }
+                            Button(
+                                onClick = {
+                                    viewModel.editDeveloperApp(
+                                        appId = appEditing.id,
+                                        name = editName,
+                                        description = editDescription,
+                                        category = editCategory,
+                                        isGame = editIsGame,
+                                        version = editVersion,
+                                        sizeMb = editSize.toFloatOrNull() ?: 1.0f,
+                                        logoUrl = editLogoUrl,
+                                        screenshotsCsv = editScreenshots,
+                                        apkFileName = editApkName
+                                    ) { success, msg ->
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        if (success) {
+                                            appToEdit = null
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
+                                modifier = Modifier.weight(1f).testTag("save_edit_button"),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Save Changes", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- DELETE APP CONFIRMATION DIALOG OVERLAY ---
+        val appDeleting = appToDelete
+        if (appDeleting != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .clickable(enabled = true) { /* prevent click through */ }
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color(0xFFFF4444).copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF131026))
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Text(
+                            text = "Delete Application Bundle?",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Are you sure you want to permanently delete '${appDeleting.name}'? This action is irreversible and will remove all app files, analytics, and user metadata from the Nova App Store.",
+                            color = Color(0xFFB0AEC6),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Button(
+                                onClick = { appToDelete = null },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E2A4F)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Cancel", color = Color.White)
+                            }
+                            Button(
+                                onClick = {
+                                    viewModel.deleteDeveloperApp(appDeleting.id) { success, msg ->
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        if (success) {
+                                            appToDelete = null
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4444)),
+                                modifier = Modifier.weight(1f).testTag("confirm_delete_button"),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Delete Forever", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     }
 }
 
@@ -459,7 +681,11 @@ fun DeveloperField(
 }
 
 @Composable
-fun DeveloperAppTrackItem(app: AppEntity) {
+fun DeveloperAppTrackItem(
+    app: AppEntity,
+    onEditClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
     val statusColor = when (app.status) {
         "Approved" -> Color(0xFF00F5D4)
         "Rejected" -> Color(0xFFD62246)
@@ -495,6 +721,44 @@ fun DeveloperAppTrackItem(app: AppEntity) {
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(app.status.uppercase(), color = statusColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Edit Icon
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF2E2A4F))
+                        .clickable { onEditClick() }
+                        .padding(6.dp)
+                        .testTag("edit_app_button_${app.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit App",
+                        tint = Color(0xFF00F5D4),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+                // Delete Icon
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF2E2A4F))
+                        .clickable { onDeleteClick() }
+                        .padding(6.dp)
+                        .testTag("delete_app_button_${app.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete App",
+                        tint = Color(0xFFFF4444),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
         }
     }

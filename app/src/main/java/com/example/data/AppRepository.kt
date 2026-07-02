@@ -22,12 +22,52 @@ class AppRepository(private val db: AppDatabase) {
     private val reviewDao = db.reviewDao()
     private val generatedImageDao = db.generatedImageDao()
     private val userSessionDao = db.userSessionDao()
+    private val userProfileDao = db.userProfileDao()
+    private val bookmarkDao = db.bookmarkDao()
+    private val referralDao = db.referralDao()
 
     val allApps: Flow<List<AppEntity>> = appDao.getAllApps()
-    val savedImages: Flow<List<GeneratedImageEntity>> = generatedImageDao.getAllImages()
     val userSession: Flow<UserSessionEntity?> = userSessionDao.getUserSessionFlow()
+    val allReferrals: Flow<List<ReferralEntity>> = referralDao.getAllReferralsFlow()
+    val allProfiles: Flow<List<UserProfileEntity>> = userProfileDao.getAllProfilesFlow()
+
+    suspend fun insertReferral(referrerEmail: String, referredEmail: String) {
+        referralDao.insertReferral(ReferralEntity(referrerEmail = referrerEmail, referredEmail = referredEmail))
+    }
+
+    suspend fun isReferred(email: String): Boolean {
+        return referralDao.isReferred(email)
+    }
+
+    suspend fun getReferralCount(): Int {
+        return referralDao.getReferralCount()
+    }
+
+    fun getSavedImages(email: String): Flow<List<GeneratedImageEntity>> = generatedImageDao.getAllImages(email)
+
+    suspend fun getProfileByEmail(email: String): UserProfileEntity? = userProfileDao.getProfileByEmail(email)
+
+    suspend fun saveProfile(profile: UserProfileEntity) = userProfileDao.insertOrUpdateProfile(profile)
 
     suspend fun getAppById(id: String): AppEntity? = appDao.getAppById(id)
+
+    suspend fun deleteApp(id: String) {
+        appDao.deleteAppById(id)
+    }
+
+    fun getBookmarksForUser(email: String): Flow<List<BookmarkEntity>> = bookmarkDao.getBookmarksForUser(email)
+
+    suspend fun addBookmark(appId: String, email: String) {
+        bookmarkDao.insertBookmark(BookmarkEntity(appId = appId, userEmail = email))
+    }
+
+    suspend fun removeBookmark(appId: String, email: String) {
+        bookmarkDao.deleteBookmark(appId, email)
+    }
+
+    suspend fun isBookmarked(appId: String, email: String): Boolean {
+        return bookmarkDao.isBookmarked(appId, email)
+    }
 
     fun getReviewsForApp(appId: String): Flow<List<ReviewEntity>> = reviewDao.getReviewsForApp(appId)
 
@@ -54,12 +94,13 @@ class AppRepository(private val db: AppDatabase) {
         reviewDao.insertReview(review)
     }
 
-    suspend fun insertGeneratedImage(prompt: String, base64Data: String, provider: String) {
+    suspend fun insertGeneratedImage(prompt: String, base64Data: String, provider: String, email: String) {
         generatedImageDao.insertImage(
             GeneratedImageEntity(
                 prompt = prompt,
                 base64Data = base64Data,
-                providerUsed = provider
+                providerUsed = provider,
+                userEmail = email
             )
         )
     }
@@ -149,10 +190,10 @@ class AppRepository(private val db: AppDatabase) {
                 }
             }
 
-            // If we didn't succeed with Gemini or keys were unconfigured, switch to backup image providers (Pollinations AI)
+            // If we didn't succeed with Gemini or keys were unconfigured, switch to backup image providers (Hercai AI)
             if (resultBase64 == null) {
                 onLogUpdate("Gemini APIs exhausted, failed, or unconfigured. Switching to backup image provider...")
-                onLogUpdate("Attempting generation using: Backup Provider (Pollinations AI Creative Engine)...")
+                onLogUpdate("Attempting generation using: Backup Provider (Hercai AI Creative Engine)...")
                 try {
                     val client = OkHttpClient.Builder()
                         .connectTimeout(30, TimeUnit.SECONDS)
@@ -160,23 +201,34 @@ class AppRepository(private val db: AppDatabase) {
                         .build()
 
                     val encodedPrompt = java.net.URLEncoder.encode(prompt, "UTF-8")
-                    val (w, h) = when (aspectRatio) {
-                        "16:9" -> 1024 to 576
-                        "3:4" -> 768 to 1024
-                        else -> 1024 to 1024
-                    }
-
-                    val url = "https://image.pollinations.ai/p/$encodedPrompt?width=$w&height=$h&nologo=true&seed=${(1..1000000).random()}"
-                    val request = Request.Builder().url(url).build()
+                    val hercaiUrl = "https://hercai.onrender.com/v3/text2image?prompt=$encodedPrompt&model=v3"
+                    val request = Request.Builder().url(hercaiUrl).build()
                     val response = client.newCall(request).execute()
 
                     if (response.isSuccessful) {
-                        val bytes = response.body?.bytes()
-                        if (bytes != null && bytes.isNotEmpty()) {
-                            resultBase64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                            onLogUpdate("Success! AI image generated via Pollinations AI Creative Engine.")
+                        val responseBodyStr = response.body?.string() ?: ""
+                        Log.d("AppRepository", "Hercai response: $responseBodyStr")
+                        val urlRegex = """\"url\"\s*:\s*\"([^\"]+)\"""".toRegex()
+                        val matchResult = urlRegex.find(responseBodyStr)
+                        val imageUrl = matchResult?.groups?.get(1)?.value
+
+                        if (!imageUrl.isNullOrEmpty()) {
+                            onLogUpdate("Hercai image URL resolved. Downloading image bytes...")
+                            val imgRequest = Request.Builder().url(imageUrl).build()
+                            val imgResponse = client.newCall(imgRequest).execute()
+                            if (imgResponse.isSuccessful) {
+                                val bytes = imgResponse.body?.bytes()
+                                if (bytes != null && bytes.isNotEmpty()) {
+                                    resultBase64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                                    onLogUpdate("Success! AI image generated via Hercai AI Creative Engine.")
+                                } else {
+                                    onLogUpdate("Hercai returned empty image bytes.")
+                                }
+                            } else {
+                                onLogUpdate("Failed downloading image from Hercai CDN.")
+                            }
                         } else {
-                            onLogUpdate("Backup provider returned empty image bytes.")
+                            onLogUpdate("Hercai API did not return a valid image URL.")
                         }
                     } else {
                         onLogUpdate("Backup provider API returned error code: ${response.code}.")
@@ -216,13 +268,13 @@ class AppRepository(private val db: AppDatabase) {
             val defaults = listOf(
                 AppEntity(
                     id = "nova_chat_ai",
-                    name = "Nova Chat AI",
-                    description = "A conversational AI chatbot that helps you with daily tasks, professional writing, and complex problem-solving. Features rich text output, quick suggestion bubbles, and voice input integration.",
+                    name = "Nova Chat Assistant",
+                    description = "A conversational assistant that helps you with daily tasks, professional writing, and complex problem-solving. Features rich text output, quick suggestion bubbles, and voice input integration.",
                     logoUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=120&auto=format&fit=crop&q=60",
                     category = "Productivity",
                     isGame = false,
                     version = "2.4.1",
-                    developer = "Nova Mind Corp",
+                    developer = "Nova App Store Developer",
                     downloads = 142300,
                     rating = 4.8f,
                     isInstalled = false,

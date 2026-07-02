@@ -45,6 +45,7 @@ fun MarketplaceHomeScreen(
     viewModel: NovaStoreViewModel,
     onNavigateToPremium: () -> Unit,
     onNavigateToProfile: () -> Unit,
+    onNavigateToLanding: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -52,6 +53,8 @@ fun MarketplaceHomeScreen(
     val selectedApp by viewModel.selectedApp.collectAsState()
     val userSession by viewModel.userSession.collectAsState()
     val appReviews by viewModel.selectedAppReviews.collectAsState()
+    val bookmarkedApps by viewModel.bookmarkedApps.collectAsState()
+    val isBookmarked = selectedApp?.let { app -> bookmarkedApps.any { it.id == app.id } } ?: false
 
     var activeSimulatorAppId by remember { mutableStateOf<String?>(null) }
 
@@ -80,6 +83,8 @@ fun MarketplaceHomeScreen(
                 installProgress = viewModel.installProgressMap[selectedApp!!.id],
                 isInstalling = viewModel.installingStateMap[selectedApp!!.id] ?: false,
                 isLoggedIn = userSession?.isLoggedIn == true,
+                isBookmarked = isBookmarked,
+                onToggleBookmark = { viewModel.toggleBookmark(selectedApp!!.id) },
                 onBack = { viewModel.selectApp(null) },
                 onInstall = { viewModel.simulateAppInstallation(selectedApp!!.id) },
                 onUninstall = { viewModel.uninstallApp(selectedApp!!.id) },
@@ -96,7 +101,8 @@ fun MarketplaceHomeScreen(
                     searchQuery = searchQuery,
                     onSearchChange = { viewModel.setSearchQuery(it) },
                     userAvatarUrl = userSession?.avatarUrl,
-                    onProfileClick = onNavigateToProfile
+                    onProfileClick = onNavigateToProfile,
+                    onInfoClick = onNavigateToLanding
                 )
 
                 // --- TOP NAVIGATION TABS ---
@@ -163,7 +169,8 @@ fun PlayStoreTopHeader(
     searchQuery: String,
     onSearchChange: (String) -> Unit,
     userAvatarUrl: String?,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
+    onInfoClick: () -> Unit
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -181,17 +188,20 @@ fun PlayStoreTopHeader(
             // Futuristic logo icon
             Image(
                 painter = painterResource(id = R.drawable.img_nova_logo_1782386944329),
-                contentDescription = "Nova Mind AI Logo",
+                contentDescription = "Nova App Store Logo",
                 modifier = Modifier
                     .size(34.dp)
                     .clip(CircleShape)
-                    .border(1.5.dp, Color(0xFF00FFFF), CircleShape),
+                    .border(1.5.dp, Color(0xFF00FFFF), CircleShape)
+                    .clickable { onInfoClick() },
                 contentScale = ContentScale.Crop
             )
             Spacer(modifier = Modifier.width(10.dp))
-            Column {
+            Column(
+                modifier = Modifier.clickable { onInfoClick() }
+            ) {
                 Text(
-                    text = "Nova Mind AI",
+                    text = "Nova App Store",
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
@@ -206,6 +216,22 @@ fun PlayStoreTopHeader(
             }
 
             Spacer(modifier = Modifier.weight(1f))
+
+            // Info button
+            IconButton(
+                onClick = onInfoClick,
+                modifier = Modifier
+                    .size(36.dp)
+                    .testTag("top_header_info_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "About Nova App Store",
+                    tint = Color(0xFF00F5D4),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
 
             // User Profile Avatar / Icon
             IconButton(
@@ -471,21 +497,21 @@ fun FeaturedHeroSection(onAppSelect: (AppEntity) -> Unit) {
                     Text("FEATURED APPLICATION", color = Color(0xFFFF007F), fontSize = 8.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.height(6.dp))
-                Text("Nova Chat AI Workspace", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Experience direct conversational intelligence with our native model.", color = Color(0xFFB0AEC6), fontSize = 11.sp, maxLines = 2)
+                Text("Nova Chat Assistant Workspace", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Experience direct conversational intelligence with our native assistant.", color = Color(0xFFB0AEC6), fontSize = 11.sp, maxLines = 2)
                 Spacer(modifier = Modifier.height(10.dp))
                 Button(
                     onClick = {
                         onAppSelect(
                             AppEntity(
                                 id = "nova_chat_ai",
-                                name = "Nova Chat AI",
-                                description = "A conversational AI chatbot that helps you with daily tasks, professional writing, and complex problem-solving.",
+                                name = "Nova Chat Assistant",
+                                description = "A conversational assistant that helps you with daily tasks, professional writing, and complex problem-solving.",
                                 logoUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=120&auto=format&fit=crop&q=60",
                                 category = "Productivity",
                                 isGame = false,
                                 version = "2.4.1",
-                                developer = "Nova Mind Corp",
+                                developer = "Nova App Store Developer",
                                 downloads = 142300,
                                 rating = 4.8f,
                                 isInstalled = false,

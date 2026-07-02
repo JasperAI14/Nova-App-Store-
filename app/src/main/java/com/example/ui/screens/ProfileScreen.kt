@@ -26,11 +26,13 @@ import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Diamond
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
@@ -40,6 +42,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -76,6 +79,15 @@ fun ProfileScreen(
     val userSession by viewModel.userSession.collectAsState()
     val savedImages by viewModel.savedImages.collectAsState()
     val developerApps by viewModel.developerApps.collectAsState()
+    val bookmarkedApps by viewModel.bookmarkedApps.collectAsState()
+
+    var showGoogleSignInDialog by remember { mutableStateOf(false) }
+    var showEditProfileDialog by remember { mutableStateOf(false) }
+    var customGoogleEmail by remember { mutableStateOf("") }
+    var customGoogleName by remember { mutableStateOf("") }
+
+    var editDisplayName by remember(userSession) { mutableStateOf(userSession?.displayName ?: "") }
+    var editAvatarUrl by remember(userSession) { mutableStateOf(userSession?.avatarUrl ?: "") }
 
     val isLoggedIn = userSession?.isLoggedIn == true
     val isPremium = userSession?.isPremium == true
@@ -297,7 +309,7 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.height(24.dp))
 
                         Button(
-                            onClick = { viewModel.signInUser() },
+                            onClick = { showGoogleSignInDialog = true },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp)
@@ -313,6 +325,192 @@ fun ProfileScreen(
                             Text("Sign In with Google", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
+                }
+
+                if (showGoogleSignInDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showGoogleSignInDialog = false },
+                        title = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("G", color = Color(0xFF4285F4), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("o", color = Color(0xFFEA4335), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("o", color = Color(0xFFFBBC05), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("g", color = Color(0xFF4285F4), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("l", color = Color(0xFF34A853), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("e", color = Color(0xFFEA4335), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("Sign In", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        text = {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "Choose a Google account to log in and sync your history, reviews, and custom AI image creations securely.",
+                                    color = Color(0xFFB0AEC6),
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                )
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.signInUser(
+                                                email = "lorrenthaonah@gmail.com",
+                                                displayName = "Lorren Thaonah",
+                                                avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=60"
+                                            )
+                                            showGoogleSignInDialog = false
+                                            Toast.makeText(context, "Logged in as Lorren Thaonah!", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .testTag("account_card_lorren"),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF221C42)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AsyncImage(
+                                            model = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=60",
+                                            contentDescription = "Avatar",
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text("Lorren Thaonah", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("lorrenthaonah@gmail.com", color = Color(0xFF8E8CA8), fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.signInUser(
+                                                email = "developer.beta@gmail.com",
+                                                displayName = "Ecosystem Developer",
+                                                avatarUrl = "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&auto=format&fit=crop&q=60"
+                                            )
+                                            showGoogleSignInDialog = false
+                                            Toast.makeText(context, "Logged in as Ecosystem Developer!", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .testTag("account_card_dev"),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF221C42)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AsyncImage(
+                                            model = "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&auto=format&fit=crop&q=60",
+                                            contentDescription = "Avatar",
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text("Ecosystem Developer", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("developer.beta@gmail.com", color = Color(0xFF8E8CA8), fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(modifier = Modifier.weight(1f).height(1.dp).background(Color(0xFF2E2A4F)))
+                                    Text(" OR USE CUSTOM ACCOUNT ", color = Color(0xFF757193), fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
+                                    Box(modifier = Modifier.weight(1f).height(1.dp).background(Color(0xFF2E2A4F)))
+                                }
+
+                                OutlinedTextField(
+                                    value = customGoogleEmail,
+                                    onValueChange = { customGoogleEmail = it },
+                                    label = { Text("Google Email", color = Color(0xFF757193), fontSize = 11.sp) },
+                                    placeholder = { Text("e.g. user@gmail.com", color = Color(0xFF5A5775), fontSize = 12.sp) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = Color(0xFF7B2CBF),
+                                        unfocusedBorderColor = Color(0xFF2E2A4F)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("custom_google_email_input"),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+
+                                OutlinedTextField(
+                                    value = customGoogleName,
+                                    onValueChange = { customGoogleName = it },
+                                    label = { Text("Full Name", color = Color(0xFF757193), fontSize = 11.sp) },
+                                    placeholder = { Text("e.g. Alex Mercer", color = Color(0xFF5A5775), fontSize = 12.sp) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = Color(0xFF7B2CBF),
+                                        unfocusedBorderColor = Color(0xFF2E2A4F)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("custom_google_name_input"),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val email = customGoogleEmail.trim()
+                                    if (email.isNotEmpty() && email.contains("@")) {
+                                        viewModel.signInUser(
+                                            email = email,
+                                            displayName = customGoogleName.ifEmpty { "Google User" },
+                                            avatarUrl = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=60"
+                                        )
+                                        showGoogleSignInDialog = false
+                                        Toast.makeText(context, "Logged in as ${customGoogleName.ifEmpty { "Google User" }}!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Please enter a valid Google email address.", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7B2CBF)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("confirm_custom_google_signin_button")
+                            ) {
+                                Text("Sign In", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        },
+                        dismissButton = {
+                            Button(
+                                onClick = { showGoogleSignInDialog = false },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color(0xFFB0AEC6)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Cancel", fontSize = 13.sp)
+                            }
+                        },
+                        containerColor = Color(0xFF131026),
+                        shape = RoundedCornerShape(16.dp)
+                    )
                 }
             } else {
                 // --- PROFILE VIEW SCREEN ---
@@ -397,7 +595,87 @@ fun ProfileScreen(
                                 fontWeight = FontWeight.ExtraBold
                             )
                         }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Button(
+                            onClick = { showEditProfileDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E2A4F)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("edit_profile_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Edit Profile Details", color = Color.White, fontSize = 12.sp)
+                        }
                     }
+                }
+
+                if (showEditProfileDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showEditProfileDialog = false },
+                        title = { Text("Edit Profile Details", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedTextField(
+                                    value = editDisplayName,
+                                    onValueChange = { editDisplayName = it },
+                                    label = { Text("Display Name", color = Color(0xFF757193), fontSize = 11.sp) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = Color(0xFF7B2CBF),
+                                        unfocusedBorderColor = Color(0xFF2E2A4F)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth().testTag("edit_profile_name_input"),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                OutlinedTextField(
+                                    value = editAvatarUrl,
+                                    onValueChange = { editAvatarUrl = it },
+                                    label = { Text("Avatar Image URL", color = Color(0xFF757193), fontSize = 11.sp) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = Color(0xFF7B2CBF),
+                                        unfocusedBorderColor = Color(0xFF2E2A4F)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth().testTag("edit_profile_avatar_input"),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    viewModel.updateProfileSettings(editDisplayName.trim(), editAvatarUrl.trim()) { success, msg ->
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        if (success) {
+                                            showEditProfileDialog = false
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("save_profile_button")
+                            ) {
+                                Text("Save Settings", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        },
+                        dismissButton = {
+                            Button(
+                                onClick = { showEditProfileDialog = false },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color(0xFFB0AEC6)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Cancel", fontSize = 13.sp)
+                            }
+                        },
+                        containerColor = Color(0xFF131026),
+                        shape = RoundedCornerShape(16.dp)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -438,7 +716,7 @@ fun ProfileScreen(
                             Spacer(modifier = Modifier.height(6.dp))
 
                             Text(
-                                text = "Thank you for supporting Nova Mind AI! You have unlocked unlimited image generations, instant high-res downloads, and security fast-tracks.",
+                                text = "Thank you for supporting Nova App Store! You have unlocked unlimited image generations, instant high-res downloads, and security fast-tracks.",
                                 color = Color(0xFFE4DCC4),
                                 fontSize = 11.sp,
                                 textAlign = TextAlign.Center,
@@ -650,6 +928,62 @@ fun ProfileScreen(
                                         }
                                         .testTag("clear_promo_code_button")
                                 )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // --- BOOKMARKED APPLICATIONS ---
+                Text("Your Bookmarked Applications", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (bookmarkedApps.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .background(Color(0xFF131026), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No bookmarked applications yet.", color = Color(0xFF757193), fontSize = 12.sp)
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        bookmarkedApps.forEach { app ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF131026), RoundedCornerShape(10.dp))
+                                    .clickable { viewModel.selectApp(app.id) }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = app.logoUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(app.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(app.category, color = Color(0xFFB0AEC6), fontSize = 11.sp)
+                                }
+                                IconButton(
+                                    onClick = { viewModel.toggleBookmark(app.id) },
+                                    modifier = Modifier.testTag("unbookmark_button_${app.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = "Unbookmark",
+                                        tint = Color(0xFFFFD700),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }

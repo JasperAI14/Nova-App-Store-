@@ -10,9 +10,12 @@ import androidx.room.RoomDatabase
         AppEntity::class,
         ReviewEntity::class,
         GeneratedImageEntity::class,
-        UserSessionEntity::class
+        UserSessionEntity::class,
+        UserProfileEntity::class,
+        BookmarkEntity::class,
+        ReferralEntity::class
     ],
-    version = 2,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -20,6 +23,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun reviewDao(): ReviewDao
     abstract fun generatedImageDao(): GeneratedImageDao
     abstract fun userSessionDao(): UserSessionDao
+    abstract fun userProfileDao(): UserProfileDao
+    abstract fun bookmarkDao(): BookmarkDao
+    abstract fun referralDao(): ReferralDao
+
 
     companion object {
         @Volatile
