@@ -837,6 +837,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
                 val provider = when {
                     finalLog.contains("Gemini 2.5") -> "Gemini 2.5"
                     finalLog.contains("Gemini 3.1") -> "Gemini 3.1"
+                    finalLog.contains("Pollinations") -> "Pollinations AI"
                     finalLog.contains("Hercai") -> "Hercai AI"
                     else -> "Local Brush"
                 }

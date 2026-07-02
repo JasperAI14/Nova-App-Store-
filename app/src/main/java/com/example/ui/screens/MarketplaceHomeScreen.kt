@@ -39,6 +39,14 @@ import com.example.data.AppEntity
 import com.example.ui.viewmodel.NovaStoreViewModel
 import java.util.Locale
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.LocalIndication
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarketplaceHomeScreen(
@@ -139,24 +147,30 @@ fun MarketplaceHomeScreen(
 
                 // --- TAB CONTENT VIEWPORT ---
                 Box(modifier = Modifier.weight(1f)) {
-                    when (selectedTopTab) {
-                        0 -> ForYouTabContent(
-                            viewModel = viewModel,
-                            onAppSelect = { app -> viewModel.selectApp(app.id) }
-                        )
-                        1 -> AppStoreScreen(
-                            viewModel = viewModel
-                        )
-                        2 -> GameStoreScreen(
-                            viewModel = viewModel
-                        )
-                        3 -> AiImageScreen(
-                            viewModel = viewModel,
-                            onNavigateToPremium = onNavigateToPremium
-                        )
-                        4 -> DeveloperScreen(
-                            viewModel = viewModel
-                        )
+                    Crossfade(
+                        targetState = selectedTopTab,
+                        animationSpec = tween(durationMillis = 350, easing = EaseInOutCubic),
+                        label = "tab_fade"
+                    ) { tabIndex ->
+                        when (tabIndex) {
+                            0 -> ForYouTabContent(
+                                viewModel = viewModel,
+                                onAppSelect = { app -> viewModel.selectApp(app.id) }
+                            )
+                            1 -> AppStoreScreen(
+                                viewModel = viewModel
+                            )
+                            2 -> GameStoreScreen(
+                                viewModel = viewModel
+                            )
+                            3 -> AiImageScreen(
+                                viewModel = viewModel,
+                                onNavigateToPremium = onNavigateToPremium
+                            )
+                            4 -> DeveloperScreen(
+                                viewModel = viewModel
+                            )
+                        }
                     }
                 }
             }
@@ -312,10 +326,13 @@ fun ForYouTabContent(
     val featuredApps = appsList
     val trendingApps = appsList.reversed()
     val newApps = appsList.shuffled(java.util.Random(101))
-    val recommendedApps = appsList.shuffled(java.util.Random(202))
-    
-    val featuredGames = gamesList
-    val topGames = gamesList.reversed()
+    val aiTools = appsList.filter { 
+        it.id == "nova_chat_ai" || 
+        it.id.contains("ai") || 
+        it.name.contains("AI") || 
+        it.description.contains("AI") || 
+        it.category == "Photography" 
+    }
 
     Column(
         modifier = Modifier
@@ -329,26 +346,14 @@ fun ForYouTabContent(
         Spacer(modifier = Modifier.height(20.dp))
 
         // --- CATEGORIES SCROLL ROW ---
-        Text(
-            text = "Popular Categories",
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+        SectionHeader(title = "Popular Categories")
+        Spacer(modifier = Modifier.height(10.dp))
         CategoriesChipsRow(viewModel = viewModel)
 
         Spacer(modifier = Modifier.height(24.dp))
 
         // --- 1. FEATURED APPS ---
-        Text(
-            text = "Featured Apps",
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        SectionHeader(title = "Featured Apps")
         Spacer(modifier = Modifier.height(10.dp))
         HorizontalAppCardsList(
             apps = featuredApps,
@@ -359,13 +364,7 @@ fun ForYouTabContent(
         Spacer(modifier = Modifier.height(24.dp))
 
         // --- 2. TRENDING APPS ---
-        Text(
-            text = "Trending Apps",
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        SectionHeader(title = "Trending Apps")
         Spacer(modifier = Modifier.height(10.dp))
         HorizontalAppCardsList(
             apps = trendingApps,
@@ -375,14 +374,8 @@ fun ForYouTabContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 3. NEW APPS ---
-        Text(
-            text = "New Apps",
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        // --- 3. NEW RELEASES ---
+        SectionHeader(title = "New Releases")
         Spacer(modifier = Modifier.height(10.dp))
         HorizontalAppCardsList(
             apps = newApps,
@@ -392,51 +385,22 @@ fun ForYouTabContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 4. RECOMMENDED APPS ---
-        Text(
-            text = "Recommended Apps",
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        // --- 4. AI TOOLS ---
+        SectionHeader(title = "AI Tools")
         Spacer(modifier = Modifier.height(10.dp))
         HorizontalAppCardsList(
-            apps = recommendedApps,
+            apps = aiTools,
             viewModel = viewModel,
             onAppSelect = onAppSelect
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 5. FEATURED GAMES ---
-        Text(
-            text = "Featured Games",
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
+        // --- 5. GAMES ---
+        SectionHeader(title = "Games")
         Spacer(modifier = Modifier.height(10.dp))
         HorizontalAppCardsList(
-            apps = featuredGames,
-            viewModel = viewModel,
-            onAppSelect = onAppSelect
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- 6. TOP GAMES ---
-        Text(
-            text = "Top Games",
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        HorizontalAppCardsList(
-            apps = topGames,
+            apps = gamesList,
             viewModel = viewModel,
             onAppSelect = onAppSelect
         )
@@ -449,84 +413,210 @@ fun ForYouTabContent(
 }
 
 @Composable
+fun SectionHeader(title: String, modifier: Modifier = Modifier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(16.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color(0xFF00F0FF), Color(0xFF7B2CBF))
+                    ),
+                    shape = RoundedCornerShape(2.dp)
+                )
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+        )
+    }
+}
+
+@Composable
 fun FeaturedHeroSection(onAppSelect: (AppEntity) -> Unit) {
-    // Beautiful featured application promotion banner
+    val infiniteTransition = rememberInfiniteTransition(label = "hero_glow")
+    val glowOffset by infiniteTransition.animateFloat(
+        initialValue = -100f,
+        targetValue = 400f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow"
+    )
+    
+    val bgScale by infiniteTransition.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(6000, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bg_scale"
+    )
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "scale"
+    )
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(160.dp)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(16.dp)
+            .height(210.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current
+            ) {
+                onAppSelect(
+                    AppEntity(
+                        id = "nova_chat_ai",
+                        name = "Nova Chat Assistant",
+                        description = "A conversational assistant that helps you with daily tasks, professional writing, and complex problem-solving.",
+                        logoUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=120&auto=format&fit=crop&q=60",
+                        category = "Productivity",
+                        isGame = false,
+                        version = "2.4.1",
+                        developer = "Nova App Store Developer",
+                        downloads = 142300,
+                        rating = 4.8f,
+                        isInstalled = false,
+                        status = "Approved",
+                        sizeMb = 24.5f,
+                        apkFileName = "nova_chat_ai.apk"
+                    )
+                )
+            },
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.5.dp,
+            Brush.horizontalGradient(
+                listOf(Color(0xFF00FFFF).copy(alpha = 0.8f), Color(0xFF7B2CBF).copy(alpha = 0.8f))
+            )
+        )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Background visual pattern or design
+            // Background image with gentle breathing scaling animation
             Image(
-                painter = painterResource(id = R.drawable.img_landing_hero),
+                painter = painterResource(id = R.drawable.img_nova_banner_1782979675678),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = bgScale
+                        scaleY = bgScale
+                    },
                 contentScale = ContentScale.Crop
             )
-            // Overlay Gradient
+
+            // Linear gradient overlay + radial glowing orb offset
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.horizontalGradient(
+                        Brush.linearGradient(
                             colors = listOf(
-                                Color(0xFF131026).copy(alpha = 0.95f),
-                                Color(0xFF131026).copy(alpha = 0.5f),
-                                Color.Transparent
+                                Color(0xFF070514).copy(alpha = 0.95f),
+                                Color(0xFF070514).copy(alpha = 0.65f),
+                                Color(0xFF7B2CBF).copy(alpha = 0.15f)
                             )
                         )
                     )
+            )
+
+            // Animated light sweep / glowing particle overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(Color(0xFF00FFFF).copy(alpha = 0.18f), Color.Transparent),
+                                radius = 250f
+                            ),
+                            center = androidx.compose.ui.geometry.Offset(glowOffset, size.height / 2f)
+                        )
+                    }
             )
 
             // Content inside hero
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .padding(20.dp),
                 verticalArrangement = Arrangement.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xFFFF007F).copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-                        .border(0.5.dp, Color(0xFFFF007F), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text("FEATURED APPLICATION", color = Color(0xFFFF007F), fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("Nova Chat Assistant Workspace", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Experience direct conversational intelligence with our native assistant.", color = Color(0xFFB0AEC6), fontSize = 11.sp, maxLines = 2)
-                Spacer(modifier = Modifier.height(10.dp))
-                Button(
-                    onClick = {
-                        onAppSelect(
-                            AppEntity(
-                                id = "nova_chat_ai",
-                                name = "Nova Chat Assistant",
-                                description = "A conversational assistant that helps you with daily tasks, professional writing, and complex problem-solving.",
-                                logoUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=120&auto=format&fit=crop&q=60",
-                                category = "Productivity",
-                                isGame = false,
-                                version = "2.4.1",
-                                developer = "Nova App Store Developer",
-                                downloads = 142300,
-                                rating = 4.8f,
-                                isInstalled = false,
-                                status = "Approved",
-                                sizeMb = 24.5f,
-                                apkFileName = "nova_chat_ai.apk"
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFFFF007F).copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0xFFFF007F), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = Color(0xFFFF007F),
+                                modifier = Modifier.size(11.dp)
                             )
-                        )
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                    modifier = Modifier.height(30.dp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("FEATURED AI HUB", color = Color(0xFFFF007F), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Nova Chat AI Workspace",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.25.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Unlock professional conversational intelligence with our signature offline-enabled LLM agent sandbox.",
+                    color = Color(0xFFD1CFE7),
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    lineHeight = 16.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Install Now", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF00FFFF), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Text("Open Sandbox", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    
+                    Text(
+                        text = "v2.4 • Active Ecosystem",
+                        color = Color(0xFF00FFCC),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -621,36 +711,72 @@ fun PlayStoreAppCard(
     onClick: () -> Unit,
     onInstallClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "card_scale"
+    )
+
     Card(
         modifier = Modifier
-            .width(140.dp)
-            .clickable { onClick() }
+            .width(155.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current
+            ) { onClick() }
             .testTag("play_store_app_card_${app.id}"),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF16132D)),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF131026).copy(alpha = 0.85f)),
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.2.dp,
+            Brush.verticalGradient(
+                listOf(
+                    Color(0xFF7B2CBF).copy(alpha = 0.5f),
+                    Color(0xFF00F0FF).copy(alpha = 0.15f)
+                )
+            )
+        )
     ) {
         Column(
-            modifier = Modifier.padding(10.dp)
+            modifier = Modifier.padding(12.dp)
         ) {
-            // App Icon
-            AsyncImage(
-                model = app.logoUrl,
-                contentDescription = app.name,
+            // App Icon with border
+            Box(
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(72.dp)
                     .align(Alignment.CenterHorizontally)
-                    .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0xFF7B2CBF).copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-                contentScale = ContentScale.Crop
-            )
+                    .background(Color(0xFF070514), RoundedCornerShape(16.dp))
+                    .border(
+                        1.dp,
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF00F0FF).copy(alpha = 0.5f), Color(0xFF7B2CBF).copy(alpha = 0.5f))
+                        ),
+                        RoundedCornerShape(16.dp)
+                    )
+            ) {
+                AsyncImage(
+                    model = app.logoUrl,
+                    contentDescription = app.name,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // App Name
             Text(
                 text = app.name,
                 color = Color.White,
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -659,39 +785,49 @@ fun PlayStoreAppCard(
             // Developer
             Text(
                 text = app.developer,
-                color = Color(0xFF757193),
-                fontSize = 10.sp,
+                color = Color(0xFF8E8CA8),
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Rating & Downloads Row
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Star,
-                    contentDescription = null,
-                    tint = Color(0xFFFFB703),
-                    modifier = Modifier.size(12.dp)
-                )
-                Spacer(modifier = Modifier.width(2.dp))
-                Text(
-                    text = String.format(Locale.US, "%.1f", app.rating),
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.width(6.dp))
+            // Rating & Size
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(Color(0xFFFFD100).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = null,
+                        tint = Color(0xFFFFD100),
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = String.format(Locale.US, "%.1f", app.rating),
+                        color = Color(0xFFFFD100),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(
                     text = "${app.sizeMb.toInt()} MB",
                     color = Color(0xFF00F5D4),
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Install Button Box
             Box(
@@ -705,26 +841,31 @@ fun PlayStoreAppCard(
                         trackColor = Color(0xFF261F4D),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
                     )
                 } else {
                     Button(
                         onClick = { if (!app.isInstalled) onInstallClick() else onClick() },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (app.isInstalled) Color(0xFF261F4D) else Color(0xFF7B2CBF)
+                            containerColor = if (app.isInstalled) Color(0xFF1B1736) else Color(0xFF7B2CBF)
                         ),
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(28.dp)
+                            .height(32.dp)
+                            .border(
+                                1.dp,
+                                if (app.isInstalled) Color(0xFF7B2CBF).copy(alpha = 0.4f) else Color.Transparent,
+                                RoundedCornerShape(10.dp)
+                            )
                     ) {
                         Text(
                             text = if (app.isInstalled) "Open" else "Get",
                             color = if (app.isInstalled) Color(0xFF00F5D4) else Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }

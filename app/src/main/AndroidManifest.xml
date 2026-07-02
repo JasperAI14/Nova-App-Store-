@@ -21,6 +21,23 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Custom URL Scheme Deep Linking -->
+            <intent-filter android:label="Nova App Store Referral">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="novaappstore" android:host="referral" />
+            </intent-filter>
+
+            <!-- Web App Deep Linking -->
+            <intent-filter android:label="Nova App Store Web Referral">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" android:host="novaappstore.com" android:pathPrefix="/ref" />
+                <data android:scheme="https" android:host="novaappstore.com" android:pathPrefix="/ref" />
+            </intent-filter>
         </activity>
     </application>
 

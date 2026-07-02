@@ -190,52 +190,82 @@ class AppRepository(private val db: AppDatabase) {
                 }
             }
 
-            // If we didn't succeed with Gemini or keys were unconfigured, switch to backup image providers (Hercai AI)
+            // If we didn't succeed with Gemini or keys were unconfigured, switch to backup image providers (Pollinations AI, then Hercai AI)
             if (resultBase64 == null) {
                 onLogUpdate("Gemini APIs exhausted, failed, or unconfigured. Switching to backup image provider...")
-                onLogUpdate("Attempting generation using: Backup Provider (Hercai AI Creative Engine)...")
-                try {
-                    val client = OkHttpClient.Builder()
-                        .connectTimeout(30, TimeUnit.SECONDS)
-                        .readTimeout(30, TimeUnit.SECONDS)
-                        .build()
+                
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .build()
 
+                // Try Pollinations AI first (extremely stable, free, and returns beautiful, high-quality images directly as bytes)
+                try {
+                    onLogUpdate("Attempting generation using: Pollinations AI Creative Engine...")
                     val encodedPrompt = java.net.URLEncoder.encode(prompt, "UTF-8")
-                    val hercaiUrl = "https://hercai.onrender.com/v3/text2image?prompt=$encodedPrompt&model=v3"
-                    val request = Request.Builder().url(hercaiUrl).build()
+                    val width = if (aspectRatio == "16:9") 1024 else if (aspectRatio == "3:4") 768 else 1024
+                    val height = if (aspectRatio == "16:9") 576 else if (aspectRatio == "3:4") 1024 else 1024
+                    val pollinationsUrl = "https://image.pollinations.ai/prompt/$encodedPrompt?width=$width&height=$height&nologo=true"
+                    val request = Request.Builder().url(pollinationsUrl).build()
                     val response = client.newCall(request).execute()
 
                     if (response.isSuccessful) {
-                        val responseBodyStr = response.body?.string() ?: ""
-                        Log.d("AppRepository", "Hercai response: $responseBodyStr")
-                        val urlRegex = """\"url\"\s*:\s*\"([^\"]+)\"""".toRegex()
-                        val matchResult = urlRegex.find(responseBodyStr)
-                        val imageUrl = matchResult?.groups?.get(1)?.value
-
-                        if (!imageUrl.isNullOrEmpty()) {
-                            onLogUpdate("Hercai image URL resolved. Downloading image bytes...")
-                            val imgRequest = Request.Builder().url(imageUrl).build()
-                            val imgResponse = client.newCall(imgRequest).execute()
-                            if (imgResponse.isSuccessful) {
-                                val bytes = imgResponse.body?.bytes()
-                                if (bytes != null && bytes.isNotEmpty()) {
-                                    resultBase64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                                    onLogUpdate("Success! AI image generated via Hercai AI Creative Engine.")
-                                } else {
-                                    onLogUpdate("Hercai returned empty image bytes.")
-                                }
-                            } else {
-                                onLogUpdate("Failed downloading image from Hercai CDN.")
-                            }
+                        val bytes = response.body?.bytes()
+                        if (bytes != null && bytes.isNotEmpty()) {
+                            resultBase64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                            onLogUpdate("Success! AI image generated via Pollinations AI.")
                         } else {
-                            onLogUpdate("Hercai API did not return a valid image URL.")
+                            onLogUpdate("Pollinations AI returned empty image bytes.")
                         }
                     } else {
-                        onLogUpdate("Backup provider API returned error code: ${response.code}.")
+                        onLogUpdate("Pollinations AI returned error code: ${response.code}.")
                     }
                 } catch (e: Exception) {
-                    Log.e("AppRepository", "Error with backup provider: ${e.message}", e)
-                    onLogUpdate("Failed using backup provider: ${e.message ?: "Unknown Connection Error"}.")
+                    Log.e("AppRepository", "Error with Pollinations AI: ${e.message}", e)
+                    onLogUpdate("Pollinations AI failed: ${e.message ?: "Unknown Connection Error"}.")
+                }
+
+                // If Pollinations AI failed, fallback to Hercai AI
+                if (resultBase64 == null) {
+                    onLogUpdate("Attempting generation using: Backup Provider (Hercai AI Creative Engine)...")
+                    try {
+                        val encodedPrompt = java.net.URLEncoder.encode(prompt, "UTF-8")
+                        val hercaiUrl = "https://hercai.onrender.com/v3/text2image?prompt=$encodedPrompt&model=v3"
+                        val request = Request.Builder().url(hercaiUrl).build()
+                        val response = client.newCall(request).execute()
+
+                        if (response.isSuccessful) {
+                            val responseBodyStr = response.body?.string() ?: ""
+                            Log.d("AppRepository", "Hercai response: $responseBodyStr")
+                            val urlRegex = """\"url\"\s*:\s*\"([^\"]+)\"""".toRegex()
+                            val matchResult = urlRegex.find(responseBodyStr)
+                            val imageUrl = matchResult?.groups?.get(1)?.value
+
+                            if (!imageUrl.isNullOrEmpty()) {
+                                onLogUpdate("Hercai image URL resolved. Downloading image bytes...")
+                                val imgRequest = Request.Builder().url(imageUrl).build()
+                                val imgResponse = client.newCall(imgRequest).execute()
+                                if (imgResponse.isSuccessful) {
+                                    val bytes = imgResponse.body?.bytes()
+                                    if (bytes != null && bytes.isNotEmpty()) {
+                                        resultBase64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                                        onLogUpdate("Success! AI image generated via Hercai AI Creative Engine.")
+                                    } else {
+                                        onLogUpdate("Hercai returned empty image bytes.")
+                                    }
+                                } else {
+                                    onLogUpdate("Failed downloading image from Hercai CDN.")
+                                }
+                            } else {
+                                onLogUpdate("Hercai API did not return a valid image URL.")
+                            }
+                        } else {
+                            onLogUpdate("Backup provider API returned error code: ${response.code}.")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("AppRepository", "Error with backup provider: ${e.message}", e)
+                        onLogUpdate("Failed using backup provider: ${e.message ?: "Unknown Connection Error"}.")
+                    }
                 }
             }
 
@@ -253,12 +283,67 @@ class AppRepository(private val db: AppDatabase) {
     // Fallback creative mock abstract base64 art generator using Android drawing or plain hardcoded beautiful patterns
     // This provides a visual success state instead of an empty screen or error if the user has no network/API keys
     private fun generateMockBase64Pattern(prompt: String): String {
-        // Let's return a beautiful placeholder image that is base64 encoded!
-        // We will return pre-coded gorgeous, high-quality SVGs or standard canvas PNG representations.
-        // Let's define a clean default base64 of a beautiful geometric glowing abstract sphere (approx 100x100 for speed, or a small but nice bitmap pattern)
-        // Here's a tiny valid PNG image representing a glowing sunset grid (red/orange/blue gradient)
-        // This keeps the code simple, lightweight, and guaranteed to render beautifully!
-        return "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkBAMAAACCzIhnAAAAG1BMVEUAAAD/ZgD/mQD/zAD/2gD/5gD//wD//zP//8z/3q8YAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAWklEQVRIie3SMQHAMBAEwS0gAAn9U9gD184K+uYscG7Osnv9R9WqVatWrcvby+vT8/r89m0/7gff9gff9gff9gff9gff9gff9gff9gff9gff9gff9gff9gef9gefdgP96iWzS7V6HQAAAABJRU5ErkJggg==" // generic fallback but let's provide a few more robust ones depending on prompt!
+        return try {
+            val width = 512
+            val height = 512
+            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            
+            // Draw a beautiful dark space gradient background
+            val bgPaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                shader = android.graphics.LinearGradient(
+                    0f, 0f, width.toFloat(), height.toFloat(),
+                    android.graphics.Color.parseColor("#0D0B1C"),
+                    android.graphics.Color.parseColor("#221C42"),
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+            }
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+
+            // Draw a glowing sun or orb in the center
+            val centerPaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                shader = android.graphics.RadialGradient(
+                    width / 2f, height / 2f, 200f,
+                    android.graphics.Color.parseColor("#FF007F"),
+                    android.graphics.Color.parseColor("#00000000"),
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+            }
+            canvas.drawCircle(width / 2f, height / 2f, 200f, centerPaint)
+
+            // Draw some beautiful glowing abstract geometric rings/lines
+            val ringPaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                color = android.graphics.Color.parseColor("#00FFFF")
+                strokeWidth = 3f
+                style = android.graphics.Paint.Style.STROKE
+                alpha = 180
+            }
+            for (i in 1..5) {
+                canvas.drawCircle(width / 2f, height / 2f, 40f * i, ringPaint)
+            }
+
+            // Add some beautiful neon cross lines
+            val linePaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                color = android.graphics.Color.parseColor("#7B2CBF")
+                strokeWidth = 2f
+                alpha = 120
+            }
+            canvas.drawLine(0f, height / 2f, width.toFloat(), height / 2f, linePaint)
+            canvas.drawLine(width / 2f, 0f, width / 2f, height.toFloat(), linePaint)
+
+            // Convert to base64
+            val outputStream = java.io.ByteArrayOutputStream()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, outputStream)
+            val bytes = outputStream.toByteArray()
+            android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        } catch (e: Exception) {
+            // Ultimate fallback to a robust raw 1x1 base64 transparent PNG if graphics fail (which shouldn't happen)
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+        }
     }
 
     // Pre-populate database with cool applications and games

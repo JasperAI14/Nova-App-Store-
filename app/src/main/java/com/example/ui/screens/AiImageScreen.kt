@@ -73,6 +73,16 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -323,7 +333,12 @@ fun AiImageScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp)
-                        .testTag("ai_generate_art_button"),
+                        .testTag("ai_generate_art_button")
+                        .border(
+                            1.dp,
+                            Brush.horizontalGradient(listOf(Color(0xFF00FFFF), Color(0xFF7B2CBF))),
+                            RoundedCornerShape(12.dp)
+                        ),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7B2CBF)),
                     shape = RoundedCornerShape(12.dp),
                     enabled = !viewModel.isGeneratingImage && viewModel.promptInput.isNotBlank()
@@ -340,6 +355,88 @@ fun AiImageScreen(
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
+
+                // --- GORGEOUS PULSING QUANTUM LOADING ANIMATION ---
+                AnimatedVisibility(visible = viewModel.isGeneratingImage) {
+                    val infiniteTransition = rememberInfiniteTransition(label = "loading")
+                    val rotateAngle by infiniteTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 360f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(2000, easing = LinearEasing)
+                        ),
+                        label = "rotate"
+                    )
+                    val pulseAlpha by infiniteTransition.animateFloat(
+                        initialValue = 0.4f,
+                        targetValue = 1.0f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1200, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "pulse"
+                    )
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp)
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.horizontalGradient(listOf(Color(0xFF00FFFF), Color(0xFF7B2CBF))),
+                                shape = RoundedCornerShape(16.dp)
+                            ),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF131026))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.size(80.dp)
+                            ) {
+                                // Outer neon circle rotating
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .rotate(rotateAngle)
+                                        .border(
+                                            width = 2.dp,
+                                            brush = Brush.sweepGradient(listOf(Color(0xFF00FFFF), Color(0xFF7B2CBF), Color.Transparent)),
+                                            shape = CircleShape
+                                        )
+                                )
+                                // Inner pulsing logo/icon
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color(0xFF00FFFF),
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .graphicsLayer(alpha = pulseAlpha)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "QUANTUM SYNTHESIS ACTIVE",
+                                color = Color(0xFF00FFFF),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Holographic nodes are compiling the prompt vector using Gemini deep learning models...",
+                                color = Color(0xFFB0AEC6),
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                }
 
                 // --- USER ERROR DISPLAY CARD ---
                 AnimatedVisibility(visible = viewModel.userErrorMessage != null) {
@@ -383,7 +480,11 @@ fun AiImageScreen(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .border(1.dp, Color(0xFFFF007F).copy(alpha = 0.3f), RoundedCornerShape(14.dp)),
+                                .border(
+                                    1.dp,
+                                    Brush.horizontalGradient(listOf(Color(0xFFFF007F), Color(0xFF00FFFF))),
+                                    RoundedCornerShape(14.dp)
+                                ),
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF16132D))
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -400,24 +501,25 @@ fun AiImageScreen(
                                     contentScale = ContentScale.Crop
                                 )
 
+                                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                                    Text(
+                                        text = viewModel.promptInput,
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                    Text("Mime: image/png | Format: 1024px", color = Color(0xFF757193), fontSize = 10.sp)
+                                }
+
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = viewModel.promptInput,
-                                            color = Color.White,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1
-                                        )
-                                        Text("Mime: image/png | Format: 1024px", color = Color(0xFF757193), fontSize = 10.sp)
-                                    }
-
+                                    // 1. Download Button
                                     Button(
                                         onClick = {
                                             if (isPremium || promo == "ADMIN" || promo == "JasperAI") {
@@ -430,13 +532,44 @@ fun AiImageScreen(
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
                                         shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(horizontal = 10.dp),
-                                        modifier = Modifier.height(34.dp)
+                                        modifier = Modifier.weight(1f).height(36.dp)
                                     ) {
                                         Icon(imageVector = Icons.Default.Download, contentDescription = null, tint = Color.Black, modifier = Modifier.size(14.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text("Download", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
+
+                                    // 2. Regenerate Button
+                                    Button(
+                                        onClick = {
+                                            viewModel.generateImage()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7B2CBF)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp),
+                                        modifier = Modifier.weight(1.3f).height(36.dp)
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Regenerate", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    // 3. Edit Button
+                                    Button(
+                                        onClick = {
+                                            Toast.makeText(context, "Prompt ready for editing above!", Toast.LENGTH_SHORT).show()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16132D)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp),
+                                        modifier = Modifier.weight(0.9f).height(36.dp).border(1.dp, Color(0xFF00FFFF).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Edit, contentDescription = null, tint = Color(0xFF00FFFF), modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Edit", color = Color(0xFF00FFFF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
+                                Spacer(modifier = Modifier.height(10.dp))
                             }
                         }
                     }
@@ -550,7 +683,12 @@ fun SavedImageCard(entity: GeneratedImageEntity, onDelete: () -> Unit) {
 // Helper to convert base64 image strings to ImageBitmap safely
 fun decodeBase64ToImageBitmap(base64Str: String): ImageBitmap? {
     return try {
-        val decodedBytes = Base64.decode(base64Str, Base64.DEFAULT)
+        val cleanBase64 = if (base64Str.contains(",")) {
+            base64Str.substringAfter(",")
+        } else {
+            base64Str
+        }.trim()
+        val decodedBytes = Base64.decode(cleanBase64, Base64.DEFAULT)
         val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
         bitmap?.asImageBitmap()
     } catch (e: Exception) {

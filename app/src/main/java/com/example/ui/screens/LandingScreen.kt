@@ -109,8 +109,8 @@ fun LandingScreen(
     val totalCreditsAwarded = profiles.sumOf { it.bonusGenerations }
 
     // Signup Input States
-    var signupEmail by remember { mutableStateOf("test_visitor@gmail.com") }
-    var signupName by remember { mutableStateOf("New Explorer") }
+    var signupEmail by remember { mutableStateOf("") }
+    var signupName by remember { mutableStateOf("") }
     var manualReferrerInput by remember { mutableStateOf("") }
     
     // Automatically apply referrer code from deep-link if available

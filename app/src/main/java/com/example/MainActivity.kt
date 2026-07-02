@@ -63,6 +63,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.shape.CircleShape
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.AiImageScreen
 import com.example.ui.screens.AppStoreScreen
@@ -100,9 +107,17 @@ fun NovaAppMain() {
     var currentTab by remember { mutableStateOf(StoreTab.HOME) }
     var activeSharedPage by remember { mutableStateOf<String?>(null) }
     val userSession by viewModel.userSession.collectAsState()
+    var showReferralLandingPage by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     
+    // Auto-dismiss landing screen if logged in
+    LaunchedEffect(userSession) {
+        if (userSession?.isLoggedIn == true) {
+            showReferralLandingPage = false
+        }
+    }
+
     // Deep Linking & Intent routing handler
     val activity = context as? Activity
     val intent = activity?.intent
@@ -113,8 +128,21 @@ fun NovaAppMain() {
             val appIdFromUri = uri?.getQueryParameter("appId")
             val referrerFromUri = uri?.getQueryParameter("referrer") ?: uri?.getQueryParameter("ref")
 
-            if (!referrerFromUri.isNullOrEmpty()) {
-                viewModel.referrerEmail = referrerFromUri
+            // Robust referral deep link check
+            val isReferralScheme = uri?.scheme == "novaappstore" && uri.host == "referral"
+            val isReferralWeb = (uri?.scheme == "http" || uri?.scheme == "https") && 
+                                uri.host == "novaappstore.com" && 
+                                uri.path?.startsWith("/ref") == true
+
+            val referralCode = if (isReferralScheme || isReferralWeb) {
+                uri?.lastPathSegment
+            } else {
+                referrerFromUri
+            }
+
+            if (!referralCode.isNullOrEmpty()) {
+                viewModel.referrerEmail = referralCode
+                showReferralLandingPage = true
             }
 
             val pageFromExtra = intent.getStringExtra("page")
@@ -130,7 +158,10 @@ fun NovaAppMain() {
             } else if (!page.isNullOrEmpty()) {
                 activeSharedPage = page
                 when (page) {
-                    "landing" -> { currentTab = StoreTab.HOME }
+                    "landing" -> { 
+                        showReferralLandingPage = true
+                        currentTab = StoreTab.HOME 
+                    }
                     "ai_images" -> { currentTab = StoreTab.AI_IMAGES }
                     "profile" -> { currentTab = StoreTab.PROFILE }
                     "apps" -> { currentTab = StoreTab.APPS }
@@ -138,7 +169,6 @@ fun NovaAppMain() {
                 }
             } else {
                 activeSharedPage = null
-                currentTab = StoreTab.HOME
             }
         }
     }
@@ -169,71 +199,47 @@ fun NovaAppMain() {
         }
     }
 
-    if (userSession == null || !userSession!!.isLoggedIn) {
+    if (showReferralLandingPage) {
         LandingScreen(
             viewModel = viewModel,
             onExploreApps = {
+                showReferralLandingPage = false
                 activeSharedPage = null
                 currentTab = StoreTab.HOME
             },
             onExploreGames = {
+                showReferralLandingPage = false
                 activeSharedPage = null
                 currentTab = StoreTab.GAMES
             },
             onLaunchCreator = {
+                showReferralLandingPage = false
                 activeSharedPage = null
                 currentTab = StoreTab.AI_IMAGES
             },
             onGoToPremium = {
+                showReferralLandingPage = false
                 activeSharedPage = null
                 currentTab = StoreTab.PROFILE
             },
-            onBack = null
+            onBack = {
+                showReferralLandingPage = false
+            }
         )
     } else {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = Color(0xFF0D0B1C),
+            containerColor = Color(0xFF080516),
             bottomBar = {
-            if (activeSharedPage == null) {
-                NavigationBar(
-                    containerColor = Color(0xFF131026),
-                    tonalElevation = 8.dp,
-                    modifier = Modifier.testTag("nova_bottom_navigation_bar")
-                ) {
-                    listOf(StoreTab.HOME, StoreTab.APPS, StoreTab.GAMES, StoreTab.AI_IMAGES, StoreTab.PROFILE).forEach { tab ->
-                        val isSelected = currentTab == tab
-                        NavigationBarItem(
-                            selected = isSelected,
-                            onClick = { currentTab = tab },
-                            icon = {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = tab.title,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = tab.title,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color(0xFF00F5D4),
-                                unselectedIconColor = Color(0xFF757193),
-                                selectedTextColor = Color(0xFF00F5D4),
-                                unselectedTextColor = Color(0xFF757193),
-                                indicatorColor = Color(0xFF261F4D)
-                            ),
-                            modifier = Modifier.testTag(tab.tag)
-                        )
-                    }
+                if (activeSharedPage == null) {
+                    AnimatedBottomNavigation(
+                        currentTab = currentTab,
+                        onTabSelected = { currentTab = it },
+                        modifier = Modifier.testTag("nova_bottom_navigation_bar")
+                    )
                 }
             }
-        }
-    ) { paddingValues ->
+        ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -419,6 +425,115 @@ fun NovaAppMain() {
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AnimatedBottomNavigation(
+    currentTab: StoreTab,
+    onTabSelected: (StoreTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xF0131026),
+                        Color(0xF00D0A1C)
+                    )
+                ),
+                shape = RoundedCornerShape(24.dp)
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFF7B2CBF).copy(alpha = 0.6f),
+                        Color(0xFF00F0FF).copy(alpha = 0.6f)
+                    )
+                ),
+                shape = RoundedCornerShape(24.dp)
+            )
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StoreTab.values().forEach { tab ->
+                val isSelected = currentTab == tab
+                val animatedScale by animateFloatAsState(
+                    targetValue = if (isSelected) 1.08f else 1.0f,
+                    label = "scale"
+                )
+                val activeColor = if (isSelected) Color(0xFF00F0FF) else Color(0xFF757193)
+
+                Box(
+                    modifier = Modifier
+                        .testTag(tab.tag)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onTabSelected(tab) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.graphicsLayer(scaleX = animatedScale, scaleY = animatedScale)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            if (isSelected) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .background(
+                                            Brush.radialGradient(
+                                                colors = listOf(
+                                                    Color(0xFF00F0FF).copy(alpha = 0.25f),
+                                                    Color.Transparent
+                                                )
+                                            ),
+                                            shape = CircleShape
+                                        )
+                                )
+                            }
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.title,
+                                tint = activeColor,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Text(
+                            text = tab.title,
+                            color = activeColor,
+                            fontSize = 9.sp,
+                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                            letterSpacing = 0.1.sp
+                        )
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .width(12.dp)
+                                    .height(2.dp)
+                                    .background(Color(0xFF00F0FF), RoundedCornerShape(1.dp))
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.height(4.dp))
                         }
                     }
                 }

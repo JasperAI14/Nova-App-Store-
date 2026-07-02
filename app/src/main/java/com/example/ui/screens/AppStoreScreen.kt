@@ -81,6 +81,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorMatrix
@@ -341,30 +348,63 @@ fun AppStoreRowItem(
     onInstallClick: () -> Unit,
     onOpenClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "row_scale"
+    )
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current
+            ) { onClick() }
             .testTag("app_item_${app.id}"),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF16132D)),
-        shape = RoundedCornerShape(14.dp)
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF131026).copy(alpha = 0.85f)),
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.2.dp,
+            Brush.horizontalGradient(
+                listOf(Color(0xFF7B2CBF).copy(alpha = 0.45f), Color(0xFF00F0FF).copy(alpha = 0.15f))
+            )
+        )
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // App Logo
-            AsyncImage(
-                model = app.logoUrl,
-                contentDescription = app.name,
+            // App Logo with gradient border
+            Box(
                 modifier = Modifier
-                    .size(60.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0xFF8A2BE2).copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-                contentScale = ContentScale.Crop
-            )
+                    .size(68.dp)
+                    .background(Color(0xFF070514), RoundedCornerShape(14.dp))
+                    .border(
+                        1.2.dp,
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF00F0FF).copy(alpha = 0.5f), Color(0xFF7B2CBF).copy(alpha = 0.5f))
+                        ),
+                        RoundedCornerShape(14.dp)
+                    )
+            ) {
+                AsyncImage(
+                    model = app.logoUrl,
+                    contentDescription = app.name,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(14.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
             // App Meta
             Column(modifier = Modifier.weight(1f)) {
@@ -372,49 +412,83 @@ fun AppStoreRowItem(
                     text = app.name,
                     color = Color.White,
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.ExtraBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = app.category,
-                    color = Color(0xFF00FFFF),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
+                
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = Color(0xFFFFB703),
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF00FFFF).copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = app.category.uppercase(),
+                            color = Color(0xFF00FFFF),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+                    
                     Text(
-                        text = String.format(Locale.US, "%.1f", app.rating),
-                        color = Color.White,
-                        fontSize = 11.sp,
+                        text = "v${app.version}",
+                        color = Color(0xFF757193),
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                
+                Spacer(modifier = Modifier.height(6.dp))
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .background(Color(0xFFFFD100).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD100),
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = String.format(Locale.US, "%.1f", app.rating),
+                            color = Color(0xFFFFD100),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.width(12.dp))
+                    
                     Text(
                         text = "${app.downloads / 1000}k downloads",
                         color = Color(0xFFB0AEC6),
-                        fontSize = 11.sp
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-            // Install/Open Button
-            Box(contentAlignment = Alignment.Center) {
+            // Install/Open Button with premium visual feel
+            Box(
+                modifier = Modifier.width(72.dp),
+                contentAlignment = Alignment.Center
+            ) {
                 if (isInstalling) {
                     CircularProgressIndicator(
                         progress = installProgress ?: 0f,
                         color = Color(0xFF00F5D4),
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(34.dp),
                         strokeWidth = 3.dp
                     )
                 } else {
@@ -427,15 +501,22 @@ fun AppStoreRowItem(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (app.isInstalled) Color(0xFF00F5D4) else Color(0xFF7B2CBF)
+                            containerColor = if (app.isInstalled) Color(0xFF1B1736) else Color(0xFF7B2CBF)
                         ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                        modifier = Modifier.height(34.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(32.dp)
+                            .border(
+                                1.dp,
+                                if (app.isInstalled) Color(0xFF7B2CBF).copy(alpha = 0.4f) else Color.Transparent,
+                                RoundedCornerShape(10.dp)
+                            )
                     ) {
                         Text(
                             text = if (app.isInstalled) "Open" else "Get",
-                            color = if (app.isInstalled) Color.Black else Color.White,
+                            color = if (app.isInstalled) Color(0xFF00F5D4) else Color.White,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold
                         )
@@ -1050,7 +1131,7 @@ fun MiniAppSimulator(
 fun ChatAiSimulator() {
     val messages = remember {
         mutableStateListOf(
-            "AI Bot" to "Hello! I am Nova Chat AI. How can I help you navigate the Nova Mind platform today?"
+            "AI Bot" to "Hello! I am Nova Chat AI. How can I help you navigate the Nova App Store platform today?"
         )
     }
     var currentInput by remember { mutableStateOf("") }

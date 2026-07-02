@@ -57,6 +57,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -80,6 +81,7 @@ fun ProfileScreen(
     val savedImages by viewModel.savedImages.collectAsState()
     val developerApps by viewModel.developerApps.collectAsState()
     val bookmarkedApps by viewModel.bookmarkedApps.collectAsState()
+    val profiles by viewModel.allProfiles.collectAsState()
 
     var showGoogleSignInDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -358,75 +360,52 @@ fun ProfileScreen(
                                     lineHeight = 16.sp
                                 )
 
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            viewModel.signInUser(
-                                                email = "lorrenthaonah@gmail.com",
-                                                displayName = "Lorren Thaonah",
-                                                avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=60"
-                                            )
-                                            showGoogleSignInDialog = false
-                                            Toast.makeText(context, "Logged in as Lorren Thaonah!", Toast.LENGTH_SHORT).show()
-                                        }
-                                        .testTag("account_card_lorren"),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF221C42)),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        AsyncImage(
-                                            model = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=60",
-                                            contentDescription = "Avatar",
+                                if (profiles.isEmpty()) {
+                                    Text(
+                                        text = "No Google Accounts are registered on this device yet. Enter your details below to add and sign in to your custom Google account.",
+                                        color = Color(0xFF757193),
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(vertical = 4.dp),
+                                        textAlign = TextAlign.Center
+                                    )
+                                } else {
+                                    profiles.forEach { profile ->
+                                        Card(
                                             modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(CircleShape),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column {
-                                            Text("Lorren Thaonah", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Text("lorrenthaonah@gmail.com", color = Color(0xFF8E8CA8), fontSize = 11.sp)
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    viewModel.signInUser(
+                                                        email = profile.email,
+                                                        displayName = profile.displayName,
+                                                        avatarUrl = profile.avatarUrl
+                                                    )
+                                                    showGoogleSignInDialog = false
+                                                    Toast.makeText(context, "Logged in as ${profile.displayName}!", Toast.LENGTH_SHORT).show()
+                                                }
+                                                .testTag("account_card_${profile.email}"),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF221C42)),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                AsyncImage(
+                                                    model = profile.avatarUrl.ifEmpty { "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=60" },
+                                                    contentDescription = "Avatar",
+                                                    modifier = Modifier
+                                                        .size(36.dp)
+                                                        .clip(CircleShape),
+                                                    contentScale = ContentScale.Crop
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column {
+                                                    Text(profile.displayName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                    Text(profile.email, color = Color(0xFF8E8CA8), fontSize = 11.sp)
+                                                }
+                                            }
                                         }
-                                    }
-                                }
-
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            viewModel.signInUser(
-                                                email = "developer.beta@gmail.com",
-                                                displayName = "Ecosystem Developer",
-                                                avatarUrl = "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&auto=format&fit=crop&q=60"
-                                            )
-                                            showGoogleSignInDialog = false
-                                            Toast.makeText(context, "Logged in as Ecosystem Developer!", Toast.LENGTH_SHORT).show()
-                                        }
-                                        .testTag("account_card_dev"),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF221C42)),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        AsyncImage(
-                                            model = "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=120&auto=format&fit=crop&q=60",
-                                            contentDescription = "Avatar",
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(CircleShape),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column {
-                                            Text("Ecosystem Developer", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Text("developer.beta@gmail.com", color = Color(0xFF8E8CA8), fontSize = 11.sp)
-                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
                                     }
                                 }
 
@@ -515,55 +494,75 @@ fun ProfileScreen(
             } else {
                 // --- PROFILE VIEW SCREEN ---
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF16132D)),
-                    shape = RoundedCornerShape(16.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            1.2.dp,
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF00FFFF).copy(alpha = 0.5f), Color(0xFF7B2CBF).copy(alpha = 0.5f))
+                            ),
+                            RoundedCornerShape(20.dp)
+                        ),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF131026).copy(alpha = 0.7f)),
+                    shape = RoundedCornerShape(20.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(20.dp),
+                        modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Avatar Row
-                        Box(contentAlignment = Alignment.BottomEnd) {
+                        // Avatar Row with double glowing ring border
+                        Box(
+                            contentAlignment = Alignment.BottomEnd,
+                            modifier = Modifier
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf((if (isPremium) Color(0xFFFFD100) else Color(0xFF7B2CBF)).copy(alpha = 0.15f), Color.Transparent)
+                                    ),
+                                    CircleShape
+                                )
+                                .padding(6.dp)
+                        ) {
                             AsyncImage(
                                 model = userSession?.avatarUrl,
                                 contentDescription = "Profile Photo",
                                 modifier = Modifier
-                                    .size(90.dp)
+                                    .size(96.dp)
                                     .clip(CircleShape)
-                                    .border(2.dp, if (isPremium) Color(0xFFFFD100) else Color(0xFF7B2CBF), CircleShape),
+                                    .border(2.5.dp, if (isPremium) Color(0xFFFFD100) else Color(0xFF7B2CBF), CircleShape),
                                 contentScale = ContentScale.Crop
                             )
                             Box(
                                 modifier = Modifier
                                     .background(if (isPremium) Color(0xFFFFD100) else Color(0xFF7B2CBF), CircleShape)
-                                    .padding(4.dp)
+                                    .padding(5.dp)
                             ) {
                                 Icon(
                                     imageVector = if (isPremium) Icons.Default.Diamond else Icons.Default.Badge,
                                     contentDescription = null,
                                     tint = if (isPremium) Color.Black else Color.White,
-                                    modifier = Modifier.size(12.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         Text(
                             text = userSession?.displayName ?: "Google Member",
                             color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.25.sp
                         )
 
                         Text(
                             text = userSession?.email ?: "",
-                            color = Color(0xFFB0AEC6),
-                            fontSize = 12.sp
+                            color = Color(0xFF8E8CA8),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
                         )
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         // Premium Status Badge
                         val promo = userSession?.promoCode ?: ""
@@ -583,30 +582,34 @@ fun ProfileScreen(
                         Box(
                             modifier = Modifier
                                 .background(
-                                    badgeColor.copy(alpha = 0.15f),
-                                    RoundedCornerShape(8.dp)
+                                    badgeColor.copy(alpha = 0.12f),
+                                    RoundedCornerShape(10.dp)
                                 )
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                .border(1.dp, badgeColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 14.dp, vertical = 5.dp)
                         ) {
                             Text(
                                 text = badgeText,
                                 color = badgeColor,
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
 
                         Button(
                             onClick = { showEditProfileDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E2A4F)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("edit_profile_button")
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B1736)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .testTag("edit_profile_button")
                         ) {
-                            Icon(imageVector = Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                            Icon(imageVector = Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(13.dp), tint = Color(0xFF00F5D4))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Edit Profile Details", color = Color.White, fontSize = 12.sp)
+                            Text("Edit Profile Settings", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -678,7 +681,70 @@ fun ProfileScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // --- PREMIUM ECOSYSTEM METRICS GRID ---
+                Text(
+                    text = "Ecosystem Cloud Assets",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        PremiumMetricCard(
+                            title = "AI Creations",
+                            value = "${savedImages.size}",
+                            unit = "artworks",
+                            icon = Icons.Default.AutoAwesome,
+                            tint = Color(0xFFFF007F)
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        PremiumMetricCard(
+                            title = "Credits Balance",
+                            value = "+${userSession?.bonusGenerations ?: 0}",
+                            unit = "allocations",
+                            icon = Icons.Default.Terminal,
+                            tint = Color(0xFF7B2CBF)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        PremiumMetricCard(
+                            title = "Uploaded Apps",
+                            value = "${developerApps.size}",
+                            unit = "packages",
+                            icon = Icons.Default.UploadFile,
+                            tint = Color(0xFF00F5D4)
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        PremiumMetricCard(
+                            title = "Referrals Shared",
+                            value = "${userSession?.sharesCount ?: 0}",
+                            unit = "shares",
+                            icon = Icons.Default.Share,
+                            tint = Color(0xFF00FFFF)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // --- PREMIUM GATEWAY OR STATUS CARD ---
                 if (isPremium) {
@@ -1093,16 +1159,97 @@ fun MetricTrackRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF131026), RoundedCornerShape(10.dp))
+            .background(Color(0xFF131026), RoundedCornerShape(12.dp))
+            .border(
+                1.dp,
+                Brush.horizontalGradient(
+                    listOf(tint.copy(alpha = 0.3f), Color.Transparent)
+                ),
+                RoundedCornerShape(12.dp)
+            )
             .padding(14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(10.dp))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(tint.copy(alpha = 0.1f), CircleShape)
+                    .border(0.5.dp, tint.copy(alpha = 0.3f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+            }
+            Spacer(modifier = Modifier.width(12.dp))
             Text(title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
         Text(value, color = Color(0xFF00F5D4), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun PremiumMetricCard(
+    title: String,
+    value: String,
+    unit: String,
+    icon: ImageVector,
+    tint: Color
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                1.2.dp,
+                Brush.verticalGradient(
+                    listOf(tint.copy(alpha = 0.4f), Color.Transparent)
+                ),
+                RoundedCornerShape(18.dp)
+            ),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF131026).copy(alpha = 0.75f)),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(tint.copy(alpha = 0.1f), CircleShape)
+                        .border(0.5.dp, tint.copy(alpha = 0.3f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(14.dp))
+            
+            Text(
+                text = value,
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black
+            )
+            
+            Text(
+                text = title,
+                color = Color(0xFFB0AEC6),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Text(
+                text = unit,
+                color = tint.copy(alpha = 0.8f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
     }
 }
