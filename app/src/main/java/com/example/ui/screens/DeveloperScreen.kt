@@ -280,7 +280,45 @@ fun DeveloperScreen(
                         DeveloperField(label = "Icon Drawable/URL", value = logoUrl, onValueChange = { logoUrl = it }, placeholder = "https://images.unsplash.com/... (optional)")
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        DeveloperField(label = "Screenshots URL List (Optional, Comma-Separated)", value = screenshotsCsv, onValueChange = { screenshotsCsv = it }, placeholder = "e.g., https://img1.com, https://img2.com")
+                        // --- APP PREVIEW UPLOAD SECTION ---
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, Color(0xFF00F5D4).copy(alpha = 0.2f), RoundedCornerShape(10.dp)),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F0C20))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "App Preview",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Upload preview media that showcases your app. You can upload images, screenshots, demo videos, and screen recordings to help users understand your app before downloading.",
+                                    color = Color(0xFFB0AEC6),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Supported Images: PNG, JPG, JPEG, WEBP\nSupported Videos: MP4, WEBM, MOV",
+                                    color = Color(0xFF00F5D4).copy(alpha = 0.8f),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    lineHeight = 14.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                DeveloperField(
+                                    label = "Preview Media URL List (Optional, Comma-Separated)",
+                                    value = screenshotsCsv,
+                                    onValueChange = { screenshotsCsv = it },
+                                    placeholder = "e.g., https://domain.com/video.mp4, https://domain.com/screen1.png",
+                                    testTag = "dev_app_preview_input"
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(12.dp))
 
                         DeveloperField(label = "APK Package File Name (Required)", value = apkFileName, onValueChange = { apkFileName = it }, placeholder = "my_app_payload.apk")
@@ -529,7 +567,45 @@ fun DeveloperScreen(
                         DeveloperField(label = "Launcher Logo URL (Optional)", value = editLogoUrl, onValueChange = { editLogoUrl = it }, placeholder = "Image web address", testTag = "edit_logo_url")
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        DeveloperField(label = "Screenshot URLs (CSV, Optional)", value = editScreenshots, onValueChange = { editScreenshots = it }, placeholder = "comma separated URLs", testTag = "edit_screenshots")
+                        // --- APP PREVIEW EDIT SECTION ---
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, Color(0xFF00F5D4).copy(alpha = 0.2f), RoundedCornerShape(10.dp)),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F0C20))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "App Preview",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Upload preview media that showcases your app. You can upload images, screenshots, demo videos, and screen recordings to help users understand your app before downloading.",
+                                    color = Color(0xFFB0AEC6),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Supported Images: PNG, JPG, JPEG, WEBP\nSupported Videos: MP4, WEBM, MOV",
+                                    color = Color(0xFF00F5D4).copy(alpha = 0.8f),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    lineHeight = 14.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                DeveloperField(
+                                    label = "Preview Media URL List (Optional, Comma-Separated)",
+                                    value = editScreenshots,
+                                    onValueChange = { editScreenshots = it },
+                                    placeholder = "e.g., https://domain.com/video.mp4, https://domain.com/screen1.png",
+                                    testTag = "edit_screenshots"
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(10.dp))
 
                         DeveloperField(label = "APK Filename", value = editApkName, onValueChange = { editApkName = it }, placeholder = "app.apk", testTag = "edit_apk_name")

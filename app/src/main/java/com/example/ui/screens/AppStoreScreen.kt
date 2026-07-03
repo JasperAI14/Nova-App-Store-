@@ -36,6 +36,12 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.platform.LocalContext
 import android.content.Intent
 import android.widget.Toast
+import android.widget.VideoView
+import android.widget.MediaController
+import android.net.Uri
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -544,6 +550,7 @@ fun AppDetailsView(
 ) {
     val scrollState = rememberScrollState()
     var showReviewDialog by remember { mutableStateOf(false) }
+    var showFullScreenImageUri by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -732,40 +739,51 @@ fun AppDetailsView(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- APP SCREENSHOTS SECTION (NEW) ---
+            // --- APP PREVIEW SECTION ---
             Text(
-                text = "Screenshots",
+                text = "Preview",
                 color = Color.White,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
 
-            val screenshots = if (app.screenshotsCsv.isNotEmpty()) {
+            // Inline helper function for media categorization
+            val isVideoUrl = { url: String ->
+                val cleanUrl = url.split("?").first().lowercase()
+                cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".webm") || cleanUrl.endsWith(".mov") || url.contains(".mp4") || url.contains(".webm") || url.contains(".mov")
+            }
+
+            val allMedia = if (app.screenshotsCsv.isNotEmpty()) {
                 app.screenshotsCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }
             } else {
                 when (app.category) {
                     "Productivity" -> listOf(
+                        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
                         "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
                     )
                     "Photography" -> listOf(
+                        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
                         "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1554080353-a576cf803bda?w=500&auto=format&fit=crop&q=60"
                     )
                     "Health" -> listOf(
+                        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
                         "https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=500&auto=format&fit=crop&q=60"
                     )
                     "Tools" -> listOf(
+                        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
                         "https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1531297484001-80022131f5a1?w=500&auto=format&fit=crop&q=60"
                     )
                     else -> listOf( // Arcade, RPG, Puzzle
+                        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
                         "https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=500&auto=format&fit=crop&q=60",
                         "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=500&auto=format&fit=crop&q=60"
@@ -773,27 +791,235 @@ fun AppDetailsView(
                 }
             }
 
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-            ) {
-                items(screenshots) { imgUrl ->
-                    Card(
-                        shape = RoundedCornerShape(10.dp),
+            val orderedMedia = remember(allMedia) {
+                val videos = allMedia.filter { isVideoUrl(it) }
+                val imgs = allMedia.filter { !isVideoUrl(it) }
+                videos + imgs
+            }
+
+            var activeIndex by remember(orderedMedia) { mutableIntStateOf(0) }
+            val activeUrl = orderedMedia.getOrNull(activeIndex) ?: ""
+            val isActiveVideo = isVideoUrl(activeUrl)
+
+            if (orderedMedia.isNotEmpty()) {
+                // Large primary preview frame (Showcase)
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                        .border(1.5.dp, Color(0xFF00F5D4).copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .pointerInput(orderedMedia) {
+                            var totalDragX = 0f
+                            detectDragGestures(
+                                onDragEnd = {
+                                    if (totalDragX > 100f && activeIndex > 0) {
+                                        activeIndex--
+                                    } else if (totalDragX < -100f && activeIndex < orderedMedia.lastIndex) {
+                                        activeIndex++
+                                    }
+                                    totalDragX = 0f
+                                },
+                                onDragCancel = {
+                                    totalDragX = 0f
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    totalDragX += dragAmount.x
+                                }
+                            )
+                        },
+                    colors = CardDefaults.cardColors(containerColor = Color.Black)
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (isActiveVideo) {
+                            // Native streamable video player
+                            InlineVideoPlayer(
+                                videoUrl = activeUrl,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            // Clickable image with a full-screen expand indicator
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clickable { showFullScreenImageUri = activeUrl }
+                            ) {
+                                AsyncImage(
+                                    model = activeUrl,
+                                    contentDescription = "Active Preview Image",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                                // Full Screen instruction overlay
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(12.dp)
+                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = "Expand to full screen",
+                                            tint = Color(0xFF00F5D4),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Tap to Expand",
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Left & Right Swipe Assist Icons for Desktop or click users
+                        if (activeIndex > 0) {
+                            IconButton(
+                                onClick = { activeIndex-- },
+                                modifier = Modifier
+                                    .align(Alignment.CenterStart)
+                                    .padding(8.dp)
+                                    .size(32.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowBack,
+                                    contentDescription = "Previous Preview",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        if (activeIndex < orderedMedia.lastIndex) {
+                            IconButton(
+                                onClick = { activeIndex++ },
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(8.dp)
+                                    .size(32.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Next Preview",
+                                    tint = Color.White,
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .graphicsLayer(scaleX = -1f) // Flip horizontally
+                                )
+                            }
+                        }
+
+                        // Showcase format badge
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(12.dp)
+                                .background(Color(0xFF16132D), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (isActiveVideo) "▶ VIDEO PREVIEW" else "SCREENSHOT",
+                                color = if (isActiveVideo) Color(0xFF00F5D4) else Color(0xFF00FFFF),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Swipeable Thumbnails Row
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    items(orderedMedia.size) { index ->
+                        val mUrl = orderedMedia[index]
+                        val isVideo = isVideoUrl(mUrl)
+                        val isSelected = index == activeIndex
+
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .width(90.dp)
+                                .height(60.dp)
+                                .border(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) Color(0xFF00F5D4) else Color(0xFF1B1736),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable { activeIndex = index },
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF131026))
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                if (isVideo) {
+                                    // Visual thumbnail layout for videos
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color(0xFF0F0C20)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Video Thumbnail",
+                                            tint = Color(0xFF00F5D4),
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                } else {
+                                    AsyncImage(
+                                        model = mUrl,
+                                        contentDescription = "Thumbnail Screenshot",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
+
+                                // Format indicator overlay
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(4.dp)
+                                        .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (isVideo) "Video" else "Image",
+                                        color = Color.White,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Fallback elegant empty text
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF16132D)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Box(
                         modifier = Modifier
-                            .width(180.dp)
-                            .height(300.dp)
-                            .border(1.dp, Color(0xFF1B1736), RoundedCornerShape(10.dp)),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF131026))
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        AsyncImage(
-                            model = imgUrl,
-                            contentDescription = "App Screenshot",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
+                        Text("No App Previews uploaded.", color = Color.Gray, fontSize = 12.sp)
                     }
                 }
             }
@@ -906,6 +1132,195 @@ fun AppDetailsView(
                 showReviewDialog = false
             }
         )
+    }
+
+    if (showFullScreenImageUri != null) {
+        val isVideoUrlLocal = { url: String ->
+            val cleanUrl = url.split("?").first().lowercase()
+            cleanUrl.endsWith(".mp4") || cleanUrl.endsWith(".webm") || cleanUrl.endsWith(".mov") || url.contains(".mp4") || url.contains(".webm") || url.contains(".mov")
+        }
+
+        val allMediaLocal = if (app.screenshotsCsv.isNotEmpty()) {
+            app.screenshotsCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        } else {
+            when (app.category) {
+                "Productivity" -> listOf(
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                    "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
+                )
+                "Photography" -> listOf(
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+                    "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1554080353-a576cf803bda?w=500&auto=format&fit=crop&q=60"
+                )
+                "Health" -> listOf(
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+                    "https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=500&auto=format&fit=crop&q=60"
+                )
+                "Tools" -> listOf(
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                    "https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1531297484001-80022131f5a1?w=500&auto=format&fit=crop&q=60"
+                )
+                else -> listOf( // Arcade, RPG, Puzzle
+                    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+                    "https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=500&auto=format&fit=crop&q=60",
+                    "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=500&auto=format&fit=crop&q=60"
+                )
+            }
+        }
+
+        val orderedMediaLocal = remember(allMediaLocal) {
+            val videos = allMediaLocal.filter { isVideoUrlLocal(it) }
+            val imgs = allMediaLocal.filter { !isVideoUrlLocal(it) }
+            videos + imgs
+        }
+
+        var fullScreenIndex by remember {
+            mutableIntStateOf(orderedMediaLocal.indexOf(showFullScreenImageUri).coerceAtLeast(0))
+        }
+        val currentFullUrl = orderedMediaLocal.getOrNull(fullScreenIndex) ?: ""
+        val isCurrentImageVideo = isVideoUrlLocal(currentFullUrl)
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.95f))
+                .clickable { showFullScreenImageUri = null }
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+                    .pointerInput(orderedMediaLocal) {
+                        var totalDragX = 0f
+                        detectDragGestures(
+                            onDragEnd = {
+                                if (totalDragX > 100f && fullScreenIndex > 0) {
+                                    fullScreenIndex--
+                                } else if (totalDragX < -100f && fullScreenIndex < orderedMediaLocal.lastIndex) {
+                                    fullScreenIndex++
+                                }
+                                totalDragX = 0f
+                            },
+                            onDragCancel = {
+                                totalDragX = 0f
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                totalDragX += dragAmount.x
+                            }
+                        )
+                    }
+                    .clickable(enabled = false) {},
+                contentAlignment = Alignment.Center
+            ) {
+                if (isCurrentImageVideo) {
+                    InlineVideoPlayer(
+                        videoUrl = currentFullUrl,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
+                    )
+                } else {
+                    AsyncImage(
+                        model = currentFullUrl,
+                        contentDescription = "Full Screen Preview",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(0.8f)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+
+                // Left / Right Navigation overlay
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (fullScreenIndex > 0) {
+                        IconButton(
+                            onClick = { fullScreenIndex-- },
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Previous",
+                                tint = Color.White
+                            )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.size(48.dp))
+                    }
+
+                    if (fullScreenIndex < orderedMediaLocal.lastIndex) {
+                        IconButton(
+                            onClick = { fullScreenIndex++ },
+                            modifier = Modifier
+                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Next",
+                                tint = Color.White,
+                                modifier = Modifier.graphicsLayer(scaleX = -1f)
+                            )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.size(48.dp))
+                    }
+                }
+            }
+
+            // Close Button
+            IconButton(
+                onClick = { showFullScreenImageUri = null },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(24.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close full screen",
+                    tint = Color.White
+                )
+            }
+
+            // Status indicator bottom bar
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Preview ${fullScreenIndex + 1} of ${orderedMediaLocal.size}",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (isCurrentImageVideo) "Demo Video" else "App Screenshot",
+                    color = Color(0xFF00F5D4),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
     }
 }
 
@@ -1440,6 +1855,59 @@ fun GenericAppSimulator(app: AppEntity) {
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center
             )
+        }
+    }
+}
+
+@Composable
+fun InlineVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
+    var isPrepared by remember(videoUrl) { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier.background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                VideoView(ctx).apply {
+                    val mediaController = MediaController(ctx)
+                    mediaController.setAnchorView(this)
+                    setMediaController(mediaController)
+
+                    setVideoURI(Uri.parse(videoUrl))
+
+                    setOnPreparedListener { mp ->
+                        isPrepared = true
+                        mp.isLooping = true
+                        start()
+                    }
+                    setOnErrorListener { _, _, _ ->
+                        true
+                    }
+                }
+            },
+            update = { view ->
+                // Keep video synchronized with URL updates
+                val currentUri = Uri.parse(videoUrl)
+                // Simply set URI and play
+                view.setVideoURI(currentUri)
+                view.start()
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (!isPrepared) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = Color(0xFF00F5D4),
+                    strokeWidth = 3.dp
+                )
+            }
         }
     }
 }
