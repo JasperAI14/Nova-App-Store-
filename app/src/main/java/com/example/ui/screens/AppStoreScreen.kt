@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FilterHdr
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.RateReview
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -709,44 +710,109 @@ fun AppDetailsView(
             Spacer(modifier = Modifier.height(20.dp))
 
             // Action Installer
-            val isDownloading = viewModel?.downloadingStateMap?.get(app.id) ?: false
-            val downloadProgress = viewModel?.downloadProgressMap?.get(app.id) ?: 0f
-            val isInstallingNew = viewModel?.installingStateMap?.get(app.id) ?: false
-            val installProgressNew = viewModel?.installProgressMap?.get(app.id) ?: 0f
+            val interactiveState = viewModel?.interactiveDownloadStates?.get(app.id)
+            val isDownloadingInteractive = interactiveState != null && (interactiveState.status == "Downloading" || interactiveState.status == "Starting")
+            val isPausedInteractive = interactiveState != null && interactiveState.status == "Paused"
 
-            if (isDownloading) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+            if (isDownloadingInteractive || isPausedInteractive) {
+                val progress = interactiveState?.progress ?: 0f
+                val speed = interactiveState?.speed ?: "0 KB/s"
+                val downloadedLabel = interactiveState?.downloadedSizeLabel ?: "0.0 MB"
+                val totalLabel = interactiveState?.totalSizeLabel ?: "0.0 MB"
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF131026), RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0xFF00F5D4).copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(16.dp)
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Downloading secure payload...", color = Color.White, fontSize = 12.sp)
-                        Text("${(downloadProgress * 100).toInt()}%", color = Color(0xFF00F5D4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Column {
+                            Text(
+                                text = if (isPausedInteractive) "Download Paused" else "Downloading App APK...",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "$downloadedLabel / $totalLabel • $speed",
+                                color = Color(0xFFB0AEC6),
+                                fontSize = 11.sp
+                            )
+                        }
+                        Text(
+                            text = "${(progress * 100).toInt()}%",
+                            color = Color(0xFF00F5D4),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
                     LinearProgressIndicator(
-                        progress = downloadProgress,
+                        progress = progress,
                         color = Color(0xFF00F5D4),
                         trackColor = Color(0xFF1B1736),
-                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(CircleShape)
                     )
-                }
-            } else if (isInstallingNew) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Verifying signatures & installing...", color = Color.White, fontSize = 12.sp)
-                        Text("${(installProgressNew * 100).toInt()}%", color = Color(0xFF00F5D4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        // Pause / Resume Control Button
+                        IconButton(
+                            onClick = {
+                                if (isPausedInteractive) {
+                                    viewModel?.resumeAppDownloadInteractive(app.id, app.apkFileName, app.name, app.sizeMb)
+                                } else {
+                                    viewModel?.pauseAppDownloadInteractive(app.id)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color(0xFF1C1A3A), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = if (isPausedInteractive) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                contentDescription = if (isPausedInteractive) "Resume" else "Pause",
+                                tint = Color(0xFF00F5D4),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // Cancel Control Button
+                        IconButton(
+                            onClick = {
+                                viewModel?.cancelAppDownloadInteractive(app.id)
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color(0xFFD62246).copy(alpha = 0.15f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Cancel Download",
+                                tint = Color(0xFFD62246),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = installProgressNew,
-                        color = Color(0xFF00F5D4),
-                        trackColor = Color(0xFF1B1736),
-                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape)
-                    )
                 }
             } else {
                 Row(
@@ -754,17 +820,18 @@ fun AppDetailsView(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     val hasUpdate = app.isInstalled && app.installedVersion.isNotEmpty() && app.installedVersion != app.version
+                    val isDownloaded = app.isDownloaded || (interactiveState != null && interactiveState.status == "Success")
 
                     Button(
                         onClick = {
                             if (hasUpdate) {
-                                viewModel?.startAppUpdate(app.id)
+                                viewModel?.startAppDownloadInteractive(app.id, app.apkFileName, app.name, app.sizeMb)
                             } else if (app.isInstalled) {
                                 onOpen()
-                            } else if (app.isDownloaded) {
-                                viewModel?.startAppInstall(app.id)
+                            } else if (isDownloaded) {
+                                viewModel?.installDownloadedApkInteractive(app.id)
                             } else {
-                                viewModel?.startAppDownload(app.id)
+                                viewModel?.startAppDownloadInteractive(app.id, app.apkFileName, app.name, app.sizeMb)
                             }
                         },
                         modifier = Modifier
@@ -785,7 +852,7 @@ fun AppDetailsView(
                         val (icon, label) = when {
                             hasUpdate -> Icons.Default.Download to "Update to v${app.version}"
                             app.isInstalled -> Icons.Default.PlayArrow to "Launch App"
-                            app.isDownloaded -> Icons.Default.CheckCircle to "Install Now"
+                            isDownloaded -> Icons.Default.CheckCircle to "Install Now"
                             else -> Icons.Default.Download to "Download APK"
                         }
 

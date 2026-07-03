@@ -80,6 +80,13 @@ import com.example.ui.screens.MarketplaceHomeScreen
 import com.example.ui.screens.ProfileScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.NovaStoreViewModel
+import android.os.Build
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.filled.Security
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -179,6 +186,21 @@ fun NovaAppMain() {
                 is NovaStoreViewModel.InstallAction.DownloadApk -> {
                     Toast.makeText(context, "Initiating direct device download for ${action.appName}...", Toast.LENGTH_SHORT).show()
                     viewModel.downloadApkFile(action.fileName, action.appName)
+                }
+                is NovaStoreViewModel.InstallAction.TriggerApkInstall -> {
+                    Toast.makeText(context, "Launching system package installer for ${action.appName}...", Toast.LENGTH_SHORT).show()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        if (!context.packageManager.canRequestPackageInstalls()) {
+                            viewModel.showInstallPermissionExplanation = true
+                            viewModel.pendingApkFileToInstall = action.file
+                        } else {
+                            viewModel.performActualApkInstall(context, action.file)
+                            viewModel.triggerInstallFinishedInteractive(action.appId)
+                        }
+                    } else {
+                        viewModel.performActualApkInstall(context, action.file)
+                        viewModel.triggerInstallFinishedInteractive(action.appId)
+                    }
                 }
                 is NovaStoreViewModel.InstallAction.StartPwa -> {
                     Toast.makeText(context, "Configuring secure PWA local installation offline for ${action.appName}...", Toast.LENGTH_LONG).show()
@@ -430,6 +452,61 @@ fun NovaAppMain() {
                 }
             }
         }
+    }
+
+    if (viewModel.showInstallPermissionExplanation) {
+        AlertDialog(
+            onDismissRequest = { viewModel.showInstallPermissionExplanation = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = Color(0xFF00F5D4),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Install Permission Required", color = Color.White)
+                }
+            },
+            text = {
+                Text(
+                    text = "To install apps downloaded from Nova App Store, Android requires you to enable the 'Install Unknown Apps' permission for this store. This keeps your device secure while allowing you to enjoy your custom apps.",
+                    color = Color(0xFFB0AEC6)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.showInstallPermissionExplanation = false
+                        viewModel.openInstallPermissionSettings(context)
+                        
+                        // Also trigger simulation finish so they don't get stuck if they return
+                        val pendingFile = viewModel.pendingApkFileToInstall
+                        if (pendingFile != null) {
+                            // Find matching app with this file name to trigger finish
+                            val matchedState = viewModel.interactiveDownloadStates.values.find { it.fileName == pendingFile.name }
+                            if (matchedState != null) {
+                                viewModel.triggerInstallFinishedInteractive(matchedState.appId)
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4))
+                ) {
+                    Text("Grant in Settings", color = Color.Black)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { viewModel.showInstallPermissionExplanation = false },
+                    border = BorderStroke(1.dp, Color(0xFFB0AEC6))
+                ) {
+                    Text("Cancel", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF131026),
+            tonalElevation = 6.dp
+        )
     }
 }
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -29,6 +30,9 @@ import com.example.data.AppEntity
 import com.example.ui.viewmodel.NovaStoreViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 @Composable
 fun DeveloperScreen(
@@ -65,13 +69,95 @@ fun DeveloperScreen(
     var tagsCsv by remember { mutableStateOf("") }
     var keepOlderVersions by remember { mutableStateOf(false) }
 
+    // Device File Pickers State
+    var selectedApkUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedMediaUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+
+    val apkPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            selectedApkUri = uri
+            val fileName = uri.path?.substringAfterLast('/') ?: "selected_app.apk"
+            apkFileName = if (fileName.endsWith(".apk")) fileName else "$fileName.apk"
+            Toast.makeText(context, "APK chosen: $fileName", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val mediaPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            selectedMediaUris = selectedMediaUris + uris
+            val mediaUrls = uris.map { uri ->
+                val name = uri.path?.substringAfterLast('/') ?: "media_file"
+                "device://$name"
+            }
+            if (screenshotsCsv.isBlank()) {
+                screenshotsCsv = mediaUrls.joinToString(", ")
+            } else {
+                screenshotsCsv = screenshotsCsv + ", " + mediaUrls.joinToString(", ")
+            }
+            Toast.makeText(context, "Added ${uris.size} media file(s)", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     var isUploading by remember { mutableStateOf(false) }
+
+    // Update Form States
+    var updateApkName by remember { mutableStateOf("") }
+    var updateVersionName by remember { mutableStateOf("") }
+    var updateReleaseNotes by remember { mutableStateOf("") }
+    var updateScreenshots by remember { mutableStateOf("") }
+    var updateSelectedApkUri by remember { mutableStateOf<Uri?>(null) }
+    var updateSelectedMediaUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+
+    val updateApkPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            updateSelectedApkUri = uri
+            val fileName = uri.path?.substringAfterLast('/') ?: "updated_app.apk"
+            updateApkName = if (fileName.endsWith(".apk")) fileName else "$fileName.apk"
+            Toast.makeText(context, "APK chosen: $fileName", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val updateMediaPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            updateSelectedMediaUris = updateSelectedMediaUris + uris
+            val mediaUrls = uris.map { uri ->
+                val name = uri.path?.substringAfterLast('/') ?: "media_file"
+                "device://$name"
+            }
+            if (updateScreenshots.isBlank()) {
+                updateScreenshots = mediaUrls.joinToString(", ")
+            } else {
+                updateScreenshots = updateScreenshots + ", " + mediaUrls.joinToString(", ")
+            }
+            Toast.makeText(context, "Added ${uris.size} media file(s)", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Overlays State
     var appToEdit by remember { mutableStateOf<AppEntity?>(null) }
     var appToUpdate by remember { mutableStateOf<AppEntity?>(null) }
     var appToViewAnalytics by remember { mutableStateOf<AppEntity?>(null) }
     var appToDelete by remember { mutableStateOf<AppEntity?>(null) }
+
+    LaunchedEffect(appToUpdate) {
+        val app = appToUpdate
+        if (app != null) {
+            updateApkName = app.apkFileName
+            updateVersionName = ""
+            updateReleaseNotes = ""
+            updateScreenshots = app.screenshotsCsv
+            updateSelectedApkUri = null
+            updateSelectedMediaUris = emptyList()
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -415,19 +501,185 @@ fun DeveloperScreen(
                                                 placeholder = "e.g., https://domain.com/video.mp4, https://domain.com/screen1.png",
                                                 testTag = "dev_app_preview_input"
                                             )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(12.dp))
 
-                                    DeveloperField(label = "APK Package File Name (Required)", value = apkFileName, onValueChange = { apkFileName = it }, placeholder = "my_app_payload.apk")
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = "Requirements Note: APK package format is REQUIRED. Because this platform delivers offline-executable, direct device installer packages that bypass conventional stores, pure APK packages are the best option for instant on-device installation.",
-                                        color = Color(0xFF00F5D4).copy(alpha = 0.9f),
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        lineHeight = 14.sp
-                                    )
+                                             Spacer(modifier = Modifier.height(10.dp))
+                                             Row(
+                                                 modifier = Modifier.fillMaxWidth(),
+                                                 horizontalArrangement = Arrangement.SpaceBetween,
+                                                 verticalAlignment = Alignment.CenterVertically
+                                             ) {
+                                                 Text(
+                                                     text = "Select Preview Media from Device",
+                                                     color = Color.White,
+                                                     fontSize = 11.sp,
+                                                     fontWeight = FontWeight.Bold
+                                                 )
+                                                 Button(
+                                                     onClick = { mediaPickerLauncher.launch("*/*") },
+                                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
+                                                     shape = RoundedCornerShape(8.dp),
+                                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                     modifier = Modifier.height(30.dp)
+                                                 ) {
+                                                     Icon(imageVector = Icons.Default.Image, contentDescription = null, tint = Color.Black, modifier = Modifier.size(13.dp))
+                                                     Spacer(modifier = Modifier.width(4.dp))
+                                                     Text("Browse Gallery", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                 }
+                                             }
+
+                                             if (selectedMediaUris.isNotEmpty()) {
+                                                 Spacer(modifier = Modifier.height(8.dp))
+                                                 Text(
+                                                     text = "Selected Files (Swipe horizontally, tap X to remove):",
+                                                     color = Color(0xFFB0AEC6),
+                                                     fontSize = 10.sp
+                                                 )
+                                                 Spacer(modifier = Modifier.height(6.dp))
+                                                 androidx.compose.foundation.lazy.LazyRow(
+                                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                     modifier = Modifier.fillMaxWidth()
+                                                 ) {
+                                                     items(selectedMediaUris) { uri ->
+                                                         val fileName = uri.path?.substringAfterLast('/') ?: "media"
+                                                         Card(
+                                                             modifier = Modifier
+                                                                 .width(130.dp)
+                                                                 .height(60.dp),
+                                                             colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1736)),
+                                                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00F5D4).copy(alpha = 0.2f))
+                                                         ) {
+                                                             Row(
+                                                                 modifier = Modifier
+                                                                     .fillMaxSize()
+                                                                     .padding(6.dp),
+                                                                 verticalAlignment = Alignment.CenterVertically,
+                                                                 horizontalArrangement = Arrangement.SpaceBetween
+                                                             ) {
+                                                                 Column(modifier = Modifier.weight(1f)) {
+                                                                     Text(
+                                                                         text = fileName,
+                                                                         color = Color.White,
+                                                                         fontSize = 9.sp,
+                                                                         fontWeight = FontWeight.Bold,
+                                                                         maxLines = 1
+                                                                     )
+                                                                     Text(
+                                                                         text = if (fileName.contains(Regex("(mp4|webm|mov|avi)", RegexOption.IGNORE_CASE))) "🎥 Video" else "🖼️ Image",
+                                                                         color = Color(0xFF00F5D4),
+                                                                         fontSize = 8.sp
+                                                                     )
+                                                                 }
+                                                                 IconButton(
+                                                                     onClick = {
+                                                                         selectedMediaUris = selectedMediaUris - uri
+                                                                         val mediaUrls = selectedMediaUris.map { u ->
+                                                                             val name = u.path?.substringAfterLast('/') ?: "media_file"
+                                                                             "device://$name"
+                                                                         }
+                                                                         screenshotsCsv = mediaUrls.joinToString(", ")
+                                                                     },
+                                                                     modifier = Modifier.size(18.dp)
+                                                                 ) {
+                                                                     Icon(
+                                                                         imageVector = Icons.Default.Close,
+                                                                         contentDescription = "Remove",
+                                                                         tint = Color(0xFFD62246),
+                                                                         modifier = Modifier.size(10.dp)
+                                                                     )
+                                                                 }
+                                                             }
+                                                         }
+                                                     }
+                                                 }
+                                             }
+                                         }
+                                     }
+                                     Spacer(modifier = Modifier.height(12.dp))
+
+                                     DeveloperField(label = "APK Package File Name (Required)", value = apkFileName, onValueChange = { apkFileName = it }, placeholder = "my_app_payload.apk")
+                                     
+                                     // Modern Device APK Picker Integration
+                                     Spacer(modifier = Modifier.height(8.dp))
+                                     Card(
+                                         modifier = Modifier.fillMaxWidth(),
+                                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1736)),
+                                         shape = RoundedCornerShape(10.dp),
+                                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00F5D4).copy(alpha = 0.3f))
+                                     ) {
+                                         Column(modifier = Modifier.padding(12.dp)) {
+                                             Row(
+                                                 modifier = Modifier.fillMaxWidth(),
+                                                 horizontalArrangement = Arrangement.SpaceBetween,
+                                                 verticalAlignment = Alignment.CenterVertically
+                                             ) {
+                                                 Text(
+                                                     text = "Select APK File from Storage",
+                                                     color = Color.White,
+                                                     fontSize = 12.sp,
+                                                     fontWeight = FontWeight.Bold
+                                                 )
+                                                 Button(
+                                                     onClick = { apkPickerLauncher.launch("*/*") },
+                                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
+                                                     shape = RoundedCornerShape(8.dp),
+                                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                     modifier = Modifier.height(32.dp)
+                                                 ) {
+                                                     Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null, tint = Color.Black, modifier = Modifier.size(14.dp))
+                                                     Spacer(modifier = Modifier.width(4.dp))
+                                                     Text("Browse Files", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                 }
+                                             }
+                                             Spacer(modifier = Modifier.height(8.dp))
+                                             Text(
+                                                 text = "🛡️ Privacy Protection: We use Android's modern system-level file picker, which secures your private data and does not require granting broad external storage permissions.",
+                                                 color = Color(0xFFB0AEC6),
+                                                 fontSize = 10.sp,
+                                                 lineHeight = 13.sp
+                                             )
+                                             if (selectedApkUri != null) {
+                                                 Spacer(modifier = Modifier.height(8.dp))
+                                                 Row(
+                                                     modifier = Modifier
+                                                         .fillMaxWidth()
+                                                         .background(Color(0xFF0D0B1C), RoundedCornerShape(6.dp))
+                                                         .padding(8.dp),
+                                                     verticalAlignment = Alignment.CenterVertically,
+                                                     horizontalArrangement = Arrangement.SpaceBetween
+                                                 ) {
+                                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                                         Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF00F5D4), modifier = Modifier.size(14.dp))
+                                                         Spacer(modifier = Modifier.width(6.dp))
+                                                         Text(
+                                                             text = apkFileName,
+                                                             color = Color.White,
+                                                             fontSize = 11.sp,
+                                                             fontWeight = FontWeight.Bold,
+                                                             maxLines = 1
+                                                         )
+                                                     }
+                                                     IconButton(
+                                                         onClick = {
+                                                             selectedApkUri = null
+                                                             apkFileName = "build_dist.apk"
+                                                         },
+                                                         modifier = Modifier.size(20.dp)
+                                                     ) {
+                                                         Icon(imageVector = Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFFD62246), modifier = Modifier.size(12.dp))
+                                                     }
+                                                 }
+                                             }
+                                         }
+                                     }
+
+                                     Spacer(modifier = Modifier.height(8.dp))
+                                     Text(
+                                         text = "Requirements Note: APK package format is REQUIRED. Because this platform delivers offline-executable, direct device installer packages that bypass conventional stores, pure APK packages are the best option for instant on-device installation.",
+                                         color = Color(0xFF00F5D4).copy(alpha = 0.9f),
+                                         fontSize = 10.sp,
+                                         fontWeight = FontWeight.Medium,
+                                         lineHeight = 14.sp
+                                     )
 
                                     Spacer(modifier = Modifier.height(18.dp))
 
@@ -939,10 +1191,6 @@ fun DeveloperScreen(
         // --- UPDATE APP VERSION DIALOG OVERLAY (FOR NEW APK BINARIES) ---
         val appUpdating = appToUpdate
         if (appUpdating != null) {
-            var updateApkName by remember(appUpdating) { mutableStateOf(appUpdating.apkFileName) }
-            var updateVersionName by remember(appUpdating) { mutableStateOf("") }
-            var updateReleaseNotes by remember(appUpdating) { mutableStateOf("") }
-            var updateScreenshots by remember(appUpdating) { mutableStateOf(appUpdating.screenshotsCsv) }
             var isScanningUpdate by remember { mutableStateOf(false) }
 
             Box(
@@ -981,6 +1229,50 @@ fun DeveloperScreen(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         DeveloperField(label = "New APK File Name (Required)", value = updateApkName, onValueChange = { updateApkName = it }, placeholder = "e.g., build_v2.apk")
+                        
+                        // Device APK Picker for Update Dialog
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Select APK from Storage", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Button(
+                                onClick = { updateApkPickerLauncher.launch("*/*") },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB703)),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.FolderOpen, contentDescription = null, tint = Color.Black, modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Browse Files", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (updateSelectedApkUri != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF0D0B1C), RoundedCornerShape(6.dp))
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(updateApkName, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                IconButton(
+                                    onClick = {
+                                        updateSelectedApkUri = null
+                                        updateApkName = appUpdating.apkFileName
+                                    },
+                                    modifier = Modifier.size(16.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFFD62246), modifier = Modifier.size(12.dp))
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(10.dp))
 
                         DeveloperField(label = "New Version Name (Required)", value = updateVersionName, onValueChange = { updateVersionName = it }, placeholder = "e.g., 1.1.0")
@@ -990,6 +1282,64 @@ fun DeveloperScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         DeveloperField(label = "Update App Previews CSV (Optional)", value = updateScreenshots, onValueChange = { updateScreenshots = it }, placeholder = "Comma-separated screenshots or video URLs")
+                        
+                        // Device Media Picker for Update Dialog
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Select New Media from Device", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Button(
+                                onClick = { updateMediaPickerLauncher.launch("*/*") },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFB703)),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Image, contentDescription = null, tint = Color.Black, modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Browse Gallery", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (updateSelectedMediaUris.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            androidx.compose.foundation.lazy.LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(updateSelectedMediaUris) { uri ->
+                                    val fileName = uri.path?.substringAfterLast('/') ?: "media"
+                                    Card(
+                                        modifier = Modifier.width(110.dp).height(50.dp),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B1736))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxSize().padding(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(fileName, color = Color.White, fontSize = 8.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                                            IconButton(
+                                                onClick = {
+                                                    updateSelectedMediaUris = updateSelectedMediaUris - uri
+                                                    val mediaUrls = updateSelectedMediaUris.map { u ->
+                                                        val name = u.path?.substringAfterLast('/') ?: "media"
+                                                        "device://$name"
+                                                    }
+                                                    updateScreenshots = mediaUrls.joinToString(", ")
+                                                },
+                                                modifier = Modifier.size(16.dp)
+                                            ) {
+                                                Icon(imageVector = Icons.Default.Close, contentDescription = "Remove", tint = Color(0xFFD62246), modifier = Modifier.size(8.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(16.dp))
 
                         if (isScanningUpdate) {
