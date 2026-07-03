@@ -100,7 +100,8 @@ fun MarketplaceHomeScreen(
                 onSubmitReview = { rating, comment ->
                     val author = userSession?.displayName ?: "Anonymous User"
                     viewModel.submitAppReview(selectedApp!!.id, author, rating, comment)
-                }
+                },
+                viewModel = viewModel
             )
         } else {
             Column(modifier = Modifier.fillMaxSize()) {

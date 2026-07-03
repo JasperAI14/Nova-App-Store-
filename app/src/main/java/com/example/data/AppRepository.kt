@@ -76,12 +76,26 @@ class AppRepository(private val db: AppDatabase) {
     suspend fun updateApp(app: AppEntity) = appDao.updateApp(app)
 
     suspend fun installApp(id: String) {
-        appDao.updateAppInstallStatus(id, true)
+        val app = appDao.getAppById(id)
+        if (app != null) {
+            appDao.updateApp(app.copy(isInstalled = true, isDownloaded = true, installedVersion = app.version))
+        } else {
+            appDao.updateAppInstallStatus(id, true)
+        }
         appDao.incrementDownloads(id)
     }
 
     suspend fun uninstallApp(id: String) {
-        appDao.updateAppInstallStatus(id, false)
+        val app = appDao.getAppById(id)
+        if (app != null) {
+            appDao.updateApp(app.copy(isInstalled = false, isDownloaded = false, installedVersion = ""))
+        } else {
+            appDao.updateAppInstallStatus(id, false)
+        }
+    }
+
+    suspend fun incrementDownloads(id: String) {
+        appDao.incrementDownloads(id)
     }
 
     suspend fun submitReview(appId: String, author: String, rating: Int, comment: String) {
@@ -92,6 +106,16 @@ class AppRepository(private val db: AppDatabase) {
             comment = comment
         )
         reviewDao.insertReview(review)
+    }
+
+    suspend fun insertReviewDirectly(review: ReviewEntity) {
+        reviewDao.insertReview(review)
+    }
+
+    suspend fun getReviewsDirect(appId: String): List<ReviewEntity> {
+        return withContext(Dispatchers.IO) {
+            reviewDao.getReviewsForAppDirect(appId)
+        }
     }
 
     suspend fun insertGeneratedImage(prompt: String, base64Data: String, provider: String, email: String) {
@@ -114,6 +138,59 @@ class AppRepository(private val db: AppDatabase) {
     }
 
     suspend fun getSessionDirect(): UserSessionEntity? = userSessionDao.getUserSessionDirect()
+
+    suspend fun generateTextWithGemini(
+        prompt: String,
+        apiKey: String
+    ): String {
+        return withContext(Dispatchers.IO) {
+            val cleanKey = apiKey.trim()
+            if (cleanKey.isNotEmpty() && cleanKey != "MY_GEMINI_API_KEY") {
+                try {
+                    val requestBody = GeminiRequest(
+                        contents = listOf(
+                            GeminiContent(
+                                parts = listOf(
+                                    GeminiPart(text = prompt)
+                                )
+                            )
+                        )
+                    )
+                    val response = RetrofitClient.service.generateImageContent("gemini-3.5-flash", cleanKey, requestBody)
+                    val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                    if (!text.isNullOrEmpty()) {
+                        return@withContext text
+                    }
+                } catch (e: Exception) {
+                    Log.e("AppRepository", "Error generating text with Gemini: ${e.message}", e)
+                }
+            }
+            
+            // Local fallback simulation (smart, zero crash risk, immediate feedback)
+            simulateSmartTextReply(prompt)
+        }
+    }
+
+    private fun simulateSmartTextReply(prompt: String): String {
+        val promptLower = prompt.lowercase()
+        return when {
+            promptLower.contains("friendly") -> {
+                "Hi there! Thank you so much for the feedback! We are thrilled to hear you're enjoying the app. If there is anything else we can do to make your experience even better, let us know! \uD83D\uDE0A"
+            }
+            promptLower.contains("professional") -> {
+                "Dear user, thank you for your review and valuable insights. We are constantly striving to improve our services and your feedback has been registered with our team. Sincerely, Developer Support."
+            }
+            promptLower.contains("enthusiastic") -> {
+                "Wow, thank you SO much for the amazing review! \uD83C\uDF89 We are incredibly excited to have you on board. Stay tuned for some awesome updates coming very soon! You rock! \uD83D\uDE80"
+            }
+            promptLower.contains("empathetic") -> {
+                "We sincerely apologize for any inconvenience or frustration this has caused you. We understand how important this feature is to your workflow. Rest assured, our engineering team is actively looking into resolving this as we speak."
+            }
+            else -> {
+                "Thank you for sharing your thoughts with us. We appreciate your feedback and are dedicated to making our app the best it can be. If you have any further suggestions, feel free to reach out!"
+            }
+        }
+    }
 
     // Gemini API call for image generation with failover logs returned
     suspend fun generateImageWithFailover(
@@ -365,7 +442,15 @@ class AppRepository(private val db: AppDatabase) {
                     isInstalled = false,
                     status = "Approved",
                     sizeMb = 24.5f,
-                    apkFileName = "nova_chat_ai.apk"
+                    apkFileName = "nova_chat_ai.apk",
+                    packageName = "com.aistudio.novachat",
+                    versionCode = 24,
+                    permissionsCsv = "android.permission.INTERNET, android.permission.RECORD_AUDIO, android.permission.ACCESS_NETWORK_STATE",
+                    shortDescription = "Smart conversational AI with voice entry and dynamic response bubbles.",
+                    tagsCsv = "AI, Assistant, Chat, Productivity",
+                    releaseNotes = "Added conversational voice input and optimized model latency.",
+                    keepOlderVersions = true,
+                    historyVersionsJson = """[{"version":"2.3.0","versionCode":23,"apkFileName":"nova_chat_v2.3.apk","releaseNotes":"Minor bug fixes in suggestions UI","sizeMb":24.2,"publishDate":1718870000000}]"""
                 ),
                 AppEntity(
                     id = "nova_editor",
@@ -381,7 +466,13 @@ class AppRepository(private val db: AppDatabase) {
                     isInstalled = false,
                     status = "Approved",
                     sizeMb = 48.2f,
-                    apkFileName = "nova_editor.apk"
+                    apkFileName = "nova_editor.apk",
+                    packageName = "com.pixelcraft.novaeditor",
+                    versionCode = 8,
+                    permissionsCsv = "android.permission.INTERNET, android.permission.READ_MEDIA_IMAGES, android.permission.WRITE_EXTERNAL_STORAGE",
+                    shortDescription = "Professional photo editor and filters creator.",
+                    tagsCsv = "Editor, Photos, Filters, Creativity",
+                    releaseNotes = "Improved high-res exporting and raw camera support."
                 ),
                 AppEntity(
                     id = "nova_fit",
@@ -397,7 +488,13 @@ class AppRepository(private val db: AppDatabase) {
                     isInstalled = false,
                     status = "Approved",
                     sizeMb = 18.7f,
-                    apkFileName = "nova_fit.apk"
+                    apkFileName = "nova_fit.apk",
+                    packageName = "com.biodynamic.novafit",
+                    versionCode = 32,
+                    permissionsCsv = "android.permission.INTERNET, android.permission.ACTIVITY_RECOGNITION, android.permission.ACCESS_FINE_LOCATION",
+                    shortDescription = "Edge-to-edge step tracking, nutrition logging, and GPS maps.",
+                    tagsCsv = "Fitness, Health, GPS, Tracker",
+                    releaseNotes = "Brand new dynamic widgets and optimized battery step counting."
                 ),
                 AppEntity(
                     id = "nova_weather",
@@ -413,7 +510,13 @@ class AppRepository(private val db: AppDatabase) {
                     isInstalled = false,
                     status = "Approved",
                     sizeMb = 12.1f,
-                    apkFileName = "nova_weather.apk"
+                    apkFileName = "nova_weather.apk",
+                    packageName = "com.atmos.novaweather",
+                    versionCode = 15,
+                    permissionsCsv = "android.permission.INTERNET, android.permission.ACCESS_COARSE_LOCATION, android.permission.ACCESS_FINE_LOCATION",
+                    shortDescription = "Hyperlocal forecasts, visual storm radars, and alerts.",
+                    tagsCsv = "Weather, Radar, Alerts, Tools",
+                    releaseNotes = "Added real-time interactive precipitation radar grids."
                 ),
                 // Games
                 AppEntity(
@@ -430,7 +533,13 @@ class AppRepository(private val db: AppDatabase) {
                     isInstalled = false,
                     status = "Approved",
                     sizeMb = 8.4f,
-                    apkFileName = "nova_snake.apk"
+                    apkFileName = "nova_snake.apk",
+                    packageName = "com.retrobyte.novasnake",
+                    versionCode = 12,
+                    permissionsCsv = "android.permission.INTERNET, android.permission.VIBRATE",
+                    shortDescription = "Glowing arcade classic neon runner in high FPS.",
+                    tagsCsv = "Arcade, Retro, Casual, Games",
+                    releaseNotes = "Enabled haptic vibration feedback and grid customizations."
                 ),
                 AppEntity(
                     id = "game_clicker",
@@ -446,7 +555,13 @@ class AppRepository(private val db: AppDatabase) {
                     isInstalled = false,
                     status = "Approved",
                     sizeMb = 15.6f,
-                    apkFileName = "tap_quest.apk"
+                    apkFileName = "tap_quest.apk",
+                    packageName = "com.gigatap.tapquest",
+                    versionCode = 21,
+                    permissionsCsv = "android.permission.INTERNET",
+                    shortDescription = "Tap titans, level up heroes, and raid cyber dungeons.",
+                    tagsCsv = "RPG, Tap, Clicker, Games",
+                    releaseNotes = "New fire dungeons, weekly raid boss, and rewards multiplier."
                 ),
                 AppEntity(
                     id = "game_memory",
@@ -462,7 +577,13 @@ class AppRepository(private val db: AppDatabase) {
                     isInstalled = false,
                     status = "Approved",
                     sizeMb = 10.2f,
-                    apkFileName = "nova_memory.apk"
+                    apkFileName = "nova_memory.apk",
+                    packageName = "com.cognitivegym.novamemory",
+                    versionCode = 10,
+                    permissionsCsv = "android.permission.INTERNET",
+                    shortDescription = "Train brain retention with holographic card pairing grids.",
+                    tagsCsv = "Memory, Puzzle, Brain, Games",
+                    releaseNotes = "Added clean 4x4, 6x6, and 8x8 difficulty levels."
                 )
             )
 

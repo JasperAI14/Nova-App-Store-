@@ -22,7 +22,28 @@ data class AppEntity(
     val isUserUploaded: Boolean = false,
     val scanResult: String = "Clean (0/72 engines flagged)", // VirusTotal simulated scanning result
     val screenshotsCsv: String = "",
-    val uploadedByEmail: String = ""
+    val uploadedByEmail: String = "",
+    val isDownloaded: Boolean = false,
+    val installedVersion: String = "",
+    val packageName: String = "",
+    val versionCode: Int = 1,
+    val minSdk: Int = 21,
+    val targetSdk: Int = 34,
+    val permissionsCsv: String = "android.permission.INTERNET, android.permission.ACCESS_NETWORK_STATE",
+    val shortDescription: String = "",
+    val supportWebsite: String = "",
+    val privacyPolicy: String = "",
+    val tagsCsv: String = "",
+    val releaseNotes: String = "",
+    val publishDate: Long = System.currentTimeMillis(),
+    val keepOlderVersions: Boolean = false,
+    val historyVersionsJson: String = "[]",
+    val aiAutoRepliesEnabled: Boolean = false,
+    val aiReviewTone: String = "Friendly",
+    val aiTrainingExamplesCsv: String = "",
+    val aiReviewBeforePosting: Boolean = true,
+    val isReported: Boolean = false,
+    val reportReason: String = ""
 )
 
 @Entity(tableName = "reviews")
@@ -32,7 +53,11 @@ data class ReviewEntity(
     val authorName: String,
     val rating: Int,
     val comment: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val developerReply: String? = null,
+    val aiProposedReply: String? = null,
+    val isReported: Boolean = false,
+    val reportedReason: String? = null
 )
 
 @Entity(tableName = "generated_images")

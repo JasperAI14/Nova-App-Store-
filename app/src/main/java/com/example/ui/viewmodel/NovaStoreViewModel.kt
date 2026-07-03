@@ -1,6 +1,7 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -151,6 +152,44 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
 
     // Maps appId -> isInstalling (Boolean)
     var installingStateMap by mutableStateOf<Map<String, Boolean>>(emptyMap())
+        private set
+
+    // Search system state variables
+    var showSearchPage by mutableStateOf(false)
+    var recentSearches by mutableStateOf(listOf("Nova Chat", "Snake", "Photo Editor"))
+    val trendingSearches = listOf("Nova Chat", "Tap Quest", "Weather", "Snake Game", "Memory Cards")
+    var searchSuggestions by mutableStateOf(listOf<String>())
+
+    fun setSearchQueryAndGetSuggestions(query: String) {
+        if (query.isEmpty()) {
+            searchSuggestions = emptyList()
+            return
+        }
+        val matchingApps = allApps.value
+            .filter { it.status == "Approved" && (it.name.contains(query, ignoreCase = true) || it.developer.contains(query, ignoreCase = true) || it.category.contains(query, ignoreCase = true)) }
+            .map { it.name }
+            .take(6)
+        searchSuggestions = matchingApps
+    }
+
+    fun executeSearch(query: String) {
+        if (query.trim().isNotEmpty()) {
+            val list = recentSearches.toMutableList()
+            if (!list.contains(query.trim())) {
+                list.add(0, query.trim())
+            }
+            recentSearches = list.take(10)
+        }
+    }
+
+    fun clearRecentSearches() {
+        recentSearches = emptyList()
+    }
+
+    // App downloading state maps
+    var downloadingStateMap by mutableStateOf<Map<String, Boolean>>(emptyMap())
+        private set
+    var downloadProgressMap by mutableStateOf<Map<String, Float>>(emptyMap())
         private set
 
     // Selected App Detail state
@@ -492,15 +531,18 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun editDeveloperApp(
         appId: String,
-        name: String,
+        shortDescription: String,
         description: String,
         category: String,
         isGame: Boolean,
-        version: String,
-        sizeMb: Float,
-        logoUrl: String,
+        tagsCsv: String,
         screenshotsCsv: String,
-        apkFileName: String,
+        supportWebsite: String,
+        privacyPolicy: String,
+        aiAutoRepliesEnabled: Boolean = false,
+        aiReviewTone: String = "Friendly",
+        aiTrainingExamplesCsv: String = "",
+        aiReviewBeforePosting: Boolean = true,
         onComplete: (Boolean, String) -> Unit
     ) {
         viewModelScope.launch {
@@ -515,18 +557,114 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
                 return@launch
             }
             val updatedApp = app.copy(
-                name = name,
+                shortDescription = shortDescription,
                 description = description,
                 category = category,
                 isGame = isGame,
-                version = version,
-                sizeMb = sizeMb,
-                logoUrl = if (logoUrl.isNotEmpty()) logoUrl else app.logoUrl,
+                tagsCsv = tagsCsv,
                 screenshotsCsv = screenshotsCsv,
-                apkFileName = apkFileName
+                supportWebsite = supportWebsite,
+                privacyPolicy = privacyPolicy,
+                aiAutoRepliesEnabled = aiAutoRepliesEnabled,
+                aiReviewTone = aiReviewTone,
+                aiTrainingExamplesCsv = aiTrainingExamplesCsv,
+                aiReviewBeforePosting = aiReviewBeforePosting
             )
             repository.updateApp(updatedApp)
-            onComplete(true, "Application details successfully updated.")
+            onComplete(true, "Application listing successfully edited.")
+        }
+    }
+
+    fun updateDeveloperApp(
+        appId: String,
+        newApkFileName: String,
+        newVersion: String,
+        releaseNotes: String,
+        updatedScreenshotsCsv: String,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val session = repository.getSessionDirect()
+            val app = repository.getAppById(appId)
+            if (session == null || !session.isLoggedIn || app == null) {
+                onComplete(false, "Authentication required or application not found.")
+                return@launch
+            }
+            if (app.uploadedByEmail.lowercase() != session.email.lowercase()) {
+                onComplete(false, "Permission denied. You can only update your own applications.")
+                return@launch
+            }
+
+            // Step 1: Simulate APK Manifest Metadata Extraction for Update
+            scanningState = "Analyzing"
+            scanningProgress = 0f
+            while (scanningProgress < 1f) {
+                delay(200)
+                scanningProgress += 0.25f
+            }
+
+            // Step 2: Simulate Malware Security Scanning for Update
+            scanningState = "Scanning"
+            scanningProgress = 0f
+            while (scanningProgress < 1f) {
+                delay(200)
+                scanningProgress += 0.2f
+            }
+
+            scanningState = "Finished"
+
+            // Increment version code
+            val newVersionCode = app.versionCode + 1
+
+            // Handle Version History (Option B: Keep Older Versions Available)
+            var updatedHistoryJson = app.historyVersionsJson
+            if (app.keepOlderVersions) {
+                try {
+                    val arr = if (app.historyVersionsJson.isNotEmpty() && app.historyVersionsJson != "[]") {
+                        org.json.JSONArray(app.historyVersionsJson)
+                    } else {
+                        org.json.JSONArray()
+                    }
+                    val oldVerObj = org.json.JSONObject().apply {
+                        put("version", app.version)
+                        put("versionCode", app.versionCode)
+                        put("apkFileName", app.apkFileName)
+                        put("releaseNotes", app.releaseNotes)
+                        put("sizeMb", app.sizeMb)
+                        put("publishDate", app.publishDate)
+                    }
+                    arr.put(oldVerObj)
+                    updatedHistoryJson = arr.toString()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // Safety scanner check on update
+            val lowerNotes = releaseNotes.lowercase()
+            val isDangerous = lowerNotes.contains("ransomware") || lowerNotes.contains("trojan") || 
+                              lowerNotes.contains("spyware") || lowerNotes.contains("malware") || 
+                              lowerNotes.contains("cryptominer") || lowerNotes.contains("exploit")
+
+            if (isDangerous) {
+                scanningState = "Idle"
+                onComplete(false, "UPDATE REJECTED: Malware Scan Blocked this update! (Suspicious signature flagged in update payloads)")
+                return@launch
+            }
+
+            val updatedApp = app.copy(
+                apkFileName = newApkFileName,
+                version = newVersion,
+                versionCode = newVersionCode,
+                releaseNotes = releaseNotes,
+                screenshotsCsv = if (updatedScreenshotsCsv.isNotEmpty()) updatedScreenshotsCsv else app.screenshotsCsv,
+                historyVersionsJson = updatedHistoryJson,
+                publishDate = System.currentTimeMillis()
+            )
+
+            repository.updateApp(updatedApp)
+            scanningState = "Idle"
+            onComplete(true, "Application successfully updated to version $newVersion!")
         }
     }
 
@@ -860,37 +998,106 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // App installer simulator
-    fun simulateAppInstallation(appId: String) {
-        if (installingStateMap[appId] == true) return
-
+    // App downloading, installation, and update system
+    fun startAppDownload(appId: String) {
+        if (downloadingStateMap[appId] == true) return
         viewModelScope.launch {
+            downloadingStateMap = downloadingStateMap + (appId to true)
+            var progress = 0f
+            while (progress <= 1f) {
+                downloadProgressMap = downloadProgressMap + (appId to progress)
+                delay(150) // fast but realistic simulation
+                progress += 0.1f
+            }
             val app = repository.getAppById(appId)
             if (app != null) {
-                if (app.isUserUploaded) {
-                    installingStateMap = installingStateMap + (appId to true)
-                    var progress = 0f
-                    while (progress <= 1f) {
-                        installProgressMap = installProgressMap + (appId to progress)
-                        delay(300)
-                        progress += 0.2f
-                    }
-                    repository.installApp(appId)
-                    installingStateMap = installingStateMap + (appId to false)
-                    installProgressMap = installProgressMap - appId
+                repository.updateApp(app.copy(isDownloaded = true))
+            }
+            downloadingStateMap = downloadingStateMap - appId
+            downloadProgressMap = downloadProgressMap - appId
+        }
+    }
 
-                    // Since it is uploaded by developers, we can initiate simulated or real APK/PWA downloads!
-                    if (app.apkFileName.isNotEmpty() && app.apkFileName != "none") {
-                        _installEvent.emit(InstallAction.DownloadApk(app.apkFileName, app.name))
-                    } else if (app.id.contains("retro") || app.id.contains("clicker") || app.id.contains("quest") || app.isGame) {
-                        _installEvent.emit(InstallAction.StartPwa(app.id, app.name))
-                    } else {
-                        _installEvent.emit(InstallAction.DownloadApk("simulated_payload.apk", app.name))
-                    }
+    fun startAppInstall(appId: String) {
+        if (installingStateMap[appId] == true) return
+        viewModelScope.launch {
+            installingStateMap = installingStateMap + (appId to true)
+            var progress = 0f
+            while (progress <= 1f) {
+                installProgressMap = installProgressMap + (appId to progress)
+                delay(150)
+                progress += 0.1f
+            }
+            val app = repository.getAppById(appId)
+            if (app != null) {
+                repository.updateApp(app.copy(isInstalled = true, isDownloaded = true, installedVersion = app.version))
+                repository.incrementDownloads(appId) // increment download count in DB
+                
+                // Trigger actual file download simulation
+                if (app.apkFileName.isNotEmpty() && app.apkFileName != "none") {
+                    _installEvent.emit(InstallAction.DownloadApk(app.apkFileName, app.name))
+                } else if (app.id.contains("retro") || app.id.contains("clicker") || app.id.contains("quest") || app.isGame) {
+                    _installEvent.emit(InstallAction.StartPwa(app.id, app.name))
                 } else {
-                    _installEvent.emit(InstallAction.ShowDemoCantInstall(app.name))
+                    _installEvent.emit(InstallAction.DownloadApk("simulated_payload.apk", app.name))
                 }
             }
+            installingStateMap = installingStateMap - appId
+            installProgressMap = installProgressMap - appId
+        }
+    }
+
+    fun startAppUpdate(appId: String) {
+        if (downloadingStateMap[appId] == true || installingStateMap[appId] == true) return
+        viewModelScope.launch {
+            // First download update
+            downloadingStateMap = downloadingStateMap + (appId to true)
+            var downloadProgress = 0f
+            while (downloadProgress <= 1f) {
+                downloadProgressMap = downloadProgressMap + (appId to downloadProgress)
+                delay(150)
+                downloadProgress += 0.15f
+            }
+            downloadingStateMap = downloadingStateMap - appId
+            downloadProgressMap = downloadProgressMap - appId
+
+            // Second install update
+            installingStateMap = installingStateMap + (appId to true)
+            var installProgress = 0f
+            while (installProgress <= 1f) {
+                installProgressMap = installProgressMap + (appId to installProgress)
+                delay(150)
+                installProgress += 0.15f
+            }
+            installingStateMap = installingStateMap - appId
+            installProgressMap = installProgressMap - appId
+
+            val app = repository.getAppById(appId)
+            if (app != null) {
+                repository.updateApp(app.copy(isInstalled = true, isDownloaded = true, installedVersion = app.version))
+                
+                if (app.apkFileName.isNotEmpty() && app.apkFileName != "none") {
+                    _installEvent.emit(InstallAction.DownloadApk(app.apkFileName, app.name))
+                }
+            }
+        }
+    }
+
+    fun updateAllApps() {
+        viewModelScope.launch {
+            val apps = allApps.value.filter { it.isInstalled && it.installedVersion.isNotEmpty() && it.installedVersion != it.version }
+            for (app in apps) {
+                startAppUpdate(app.id)
+            }
+        }
+    }
+
+    // App installer simulator (legacy compatibility)
+    fun simulateAppInstallation(appId: String) {
+        startAppDownload(appId)
+        viewModelScope.launch {
+            delay(1600) // Wait for download simulation to finish
+            startAppInstall(appId)
         }
     }
 
@@ -904,15 +1111,90 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
     // Submit App Review
     fun submitAppReview(appId: String, authorName: String, rating: Int, comment: String) {
         viewModelScope.launch {
-            repository.submitReview(appId, authorName, rating, comment)
+            val app = repository.getAppById(appId)
+            val session = repository.getSessionDirect()
+            
+            // Goal 11: Developers cannot review their own apps
+            if (app != null && session != null && app.isUserUploaded && app.uploadedByEmail.lowercase() == session.email.lowercase()) {
+                Log.d("NovaStoreViewModel", "Developer cannot review their own app: $appId")
+                return@launch
+            }
+
+            val review = ReviewEntity(
+                appId = appId,
+                authorName = authorName,
+                rating = rating,
+                comment = comment,
+                timestamp = System.currentTimeMillis()
+            )
+            repository.insertReviewDirectly(review)
 
             // Dynamic recalculation of overall rating
-            val app = repository.getAppById(appId)
             if (app != null) {
-                // To keep simple, we increment the rating slightly or add a new rating logic
                 val newRating = ((app.rating * app.downloads.coerceAtLeast(10) + rating) / (app.downloads.coerceAtLeast(10) + 1))
                     .coerceIn(1.0f, 5.0f)
                 repository.updateApp(app.copy(rating = newRating))
+
+                // Goal 8: Verify AI Review Management
+                if (app.aiAutoRepliesEnabled) {
+                    val prompt = """
+                        You are an AI assistant replying to an app review on behalf of the developer.
+                        App Name: ${app.name}
+                        Reviewer: $authorName
+                        Rating: $rating stars out of 5
+                        Review Comment: "$comment"
+                        Developer's Desired Tone: ${app.aiReviewTone}
+                        Developer's Training Examples: ${app.aiTrainingExamplesCsv}
+                        
+                        Write a short, professional, and friendly reply (maximum 2-3 sentences) copying the developer's desired tone and learning from the training examples if provided.
+                    """.trimIndent()
+                    val apiKey = com.example.BuildConfig.GEMINI_API_KEY
+                    val reply = repository.generateTextWithGemini(prompt, apiKey)
+                    
+                    // Fetch reviews of the app, find our review, and update it with the AI reply
+                    val reviews = repository.getReviewsDirect(appId)
+                    val ourReview = reviews.firstOrNull { it.authorName == authorName && it.comment == comment }
+                    if (ourReview != null) {
+                        if (app.aiReviewBeforePosting) {
+                            repository.insertReviewDirectly(ourReview.copy(aiProposedReply = reply))
+                        } else {
+                            repository.insertReviewDirectly(ourReview.copy(developerReply = reply))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Goal 11: Developers can reply to reviews
+    fun submitDeveloperReply(reviewId: Int, appId: String, replyText: String) {
+        viewModelScope.launch {
+            val reviews = repository.getReviewsDirect(appId)
+            val review = reviews.firstOrNull { it.id == reviewId }
+            if (review != null) {
+                val updatedReview = review.copy(developerReply = replyText, aiProposedReply = null)
+                repository.insertReviewDirectly(updatedReview)
+            }
+        }
+    }
+
+    // Goal 11: Users can report apps (and reviews)
+    fun reportAppReview(reviewId: Int, appId: String, reason: String) {
+        viewModelScope.launch {
+            val reviews = repository.getReviewsDirect(appId)
+            val review = reviews.firstOrNull { it.id == reviewId }
+            if (review != null) {
+                val updatedReview = review.copy(isReported = true, reportedReason = reason)
+                repository.insertReviewDirectly(updatedReview)
+            }
+        }
+    }
+
+    fun reportApp(appId: String, reason: String) {
+        viewModelScope.launch {
+            val app = repository.getAppById(appId)
+            if (app != null) {
+                repository.updateApp(app.copy(isReported = true, reportReason = reason))
             }
         }
     }
@@ -920,6 +1202,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
     // Developer App Publishing
     fun publishDeveloperApp(
         name: String,
+        shortDescription: String,
         description: String,
         category: String,
         isGame: Boolean,
@@ -929,16 +1212,22 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         apkFileName: String,
         logoUrl: String,
         screenshotsCsv: String = "",
+        supportWebsite: String = "",
+        privacyPolicy: String = "",
+        tagsCsv: String = "",
+        keepOlderVersions: Boolean = false,
         onComplete: (Boolean, String) -> Unit
     ) {
         viewModelScope.launch {
             val session = repository.getSessionDirect()
             val promo = session?.promoCode ?: ""
+            val isPremium = session?.isPremium == true
             val usedUploads = session?.dailyUploadsUsed ?: 0
 
-            val maxUploads = when (promo) {
-                "ADMIN" -> Int.MAX_VALUE
-                "JasperAI" -> 5
+            val maxUploads = when {
+                promo == "ADMIN" -> Int.MAX_VALUE
+                isPremium -> Int.MAX_VALUE
+                promo == "JasperAI" -> Int.MAX_VALUE
                 else -> 2
             }
 
@@ -951,16 +1240,58 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
                 return@launch
             }
 
+            // Step 1: Simulate APK Manifest Metadata Extraction
+            scanningState = "Analyzing"
+            scanningProgress = 0f
+            while (scanningProgress < 1f) {
+                delay(200)
+                scanningProgress += 0.25f
+            }
+
+            // Step 2: Simulate Malware Security Scanning
             scanningState = "Scanning"
             scanningProgress = 0f
-
-            // Simulate malware scanning progress with VirusTotal
             while (scanningProgress < 1f) {
-                delay(400)
+                delay(200)
                 scanningProgress += 0.2f
             }
 
             scanningState = "Finished"
+
+            // Malware and safety detection rules
+            val lowerName = name.lowercase()
+            val lowerDesc = description.lowercase()
+            val lowerShort = shortDescription.lowercase()
+            val lowerApk = apkFileName.lowercase()
+
+            val isDangerous = lowerName.contains("malware") || lowerName.contains("spyware") || 
+                              lowerName.contains("trojan") || lowerName.contains("ransomware") || 
+                              lowerName.contains("exploit") || lowerName.contains("crypto mining") || 
+                              lowerName.contains("credential theft") || lowerName.contains("banking trojan") ||
+                              lowerDesc.contains("spyware") || lowerDesc.contains("ransomware") ||
+                              lowerShort.contains("spyware") || lowerShort.contains("ransomware") ||
+                              lowerApk.contains("spyware") || lowerApk.contains("ransomware")
+
+            val isMinorWarning = lowerName.contains("ad sdk") || lowerName.contains("advertise") ||
+                                 lowerDesc.contains("ads") || lowerDesc.contains("advertising") ||
+                                 lowerDesc.contains("permission") || screenshotsCsv.contains("ad_banner") ||
+                                 tagsCsv.lowercase().contains("ad")
+
+            val scanResult = when {
+                isDangerous -> "BLOCKED: Threat Detected (Spyware/Malware signatures matched)."
+                isMinorWarning -> "PASSED (With Warnings): Minor warning - contains advertising SDK & requests multiple permissions."
+                else -> "Clean (0/72 engines flagged on VirusTotal)"
+            }
+
+            val status = if (isDangerous) "Rejected" else "Approved" // Safe apps are approved automatically!
+
+            // Generate clean simulated manifest analysis properties
+            val cleanPkgName = "com.aistudio." + name.replace(" ", "").lowercase() + "." + (1000..9999).random()
+            val cleanPermissions = if (isMinorWarning) {
+                "android.permission.INTERNET, android.permission.ACCESS_FINE_LOCATION, android.permission.CAMERA, android.permission.READ_EXTERNAL_STORAGE"
+            } else {
+                "android.permission.INTERNET, android.permission.ACCESS_NETWORK_STATE"
+            }
 
             val newApp = AppEntity(
                 id = "user_app_" + System.currentTimeMillis(),
@@ -973,18 +1304,34 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
                 downloads = 0,
                 rating = 5.0f,
                 isInstalled = false,
-                status = "Pending Review", // Start as pending, but has beautiful approve simulator button
+                status = status, 
                 sizeMb = sizeMb,
                 apkFileName = apkFileName,
                 isUserUploaded = true,
                 logoUrl = if (logoUrl.isNotEmpty()) logoUrl else "https://images.unsplash.com/photo-1544383835-bda2bc66a55d?w=120&auto=format&fit=crop&q=60",
                 screenshotsCsv = screenshotsCsv,
-                uploadedByEmail = session?.email ?: ""
+                uploadedByEmail = session?.email ?: "",
+                isDownloaded = false,
+                installedVersion = "",
+                packageName = cleanPkgName,
+                versionCode = 1,
+                minSdk = 21,
+                targetSdk = 34,
+                permissionsCsv = cleanPermissions,
+                shortDescription = shortDescription,
+                supportWebsite = if (supportWebsite.isNotEmpty()) supportWebsite else "https://nova.app/support/$cleanPkgName",
+                privacyPolicy = if (privacyPolicy.isNotEmpty()) privacyPolicy else "https://nova.app/privacy/$cleanPkgName",
+                tagsCsv = tagsCsv,
+                releaseNotes = "Initial App Store release.",
+                publishDate = System.currentTimeMillis(),
+                keepOlderVersions = keepOlderVersions,
+                historyVersionsJson = "[]",
+                scanResult = scanResult
             )
 
             repository.insertApp(newApp)
 
-            // Increment upload count
+            // Increment daily upload count
             val freshSession = repository.getSessionDirect()
             if (freshSession != null) {
                 saveSessionAndSyncProfile(freshSession.copy(dailyUploadsUsed = freshSession.dailyUploadsUsed + 1))
@@ -992,7 +1339,14 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
 
             scanningState = "Idle"
             scanningProgress = 0f
-            onComplete(true, "App successfully sent to review pipeline!")
+
+            if (isDangerous) {
+                onComplete(false, "App Rejected: Malware Scan Blocked this app! (Spyware, Trojan, or exploit code detected)")
+            } else if (isMinorWarning) {
+                onComplete(true, "App Approved with Warnings! Published successfully (minor advertising/permissions warnings).")
+            } else {
+                onComplete(true, "App Approved and Published automatically to listings & search indexing!")
+            }
         }
     }
 
@@ -1001,7 +1355,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             val app = repository.getAppById(appId)
             if (app != null) {
-                repository.updateApp(app.copy(status = "Approved"))
+                repository.updateApp(app.copy(status = "Approved", scanResult = "Clean (0/72 engines flagged on VirusTotal)"))
             }
         }
     }
@@ -1011,7 +1365,7 @@ class NovaStoreViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             val app = repository.getAppById(appId)
             if (app != null) {
-                repository.updateApp(app.copy(status = "Rejected"))
+                repository.updateApp(app.copy(status = "Rejected", scanResult = "Rejected (Malware or dangerous behavior flagged)"))
             }
         }
     }

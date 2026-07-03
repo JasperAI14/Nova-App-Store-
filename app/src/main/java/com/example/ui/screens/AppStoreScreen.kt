@@ -57,6 +57,10 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material3.Button
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.ButtonDefaults
@@ -71,10 +75,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -137,7 +145,13 @@ fun AppStoreScreen(
             .fillMaxSize()
             .background(Color(0xFF0D0B1C))
     ) {
-        if (activeSimulatorAppId != null) {
+        if (viewModel.showSearchPage) {
+            StoreSearchOverlay(
+                viewModel = viewModel,
+                onDismiss = { viewModel.showSearchPage = false },
+                onAppSelect = { viewModel.selectApp(it) }
+            )
+        } else if (activeSimulatorAppId != null) {
             val app = filteredApps.find { it.id == activeSimulatorAppId } ?: selectedApp
             if (app != null) {
                 MiniAppSimulator(
@@ -161,7 +175,8 @@ fun AppStoreScreen(
                 onSubmitReview = { rating, comment ->
                     val author = userSession?.displayName ?: "Anonymous User"
                     viewModel.submitAppReview(selectedApp!!.id, author, rating, comment)
-                }
+                },
+                viewModel = viewModel
             )
         } else {
             // Main browsing view
@@ -169,7 +184,8 @@ fun AppStoreScreen(
                 // Search Bar Header
                 StoreHeader(
                     searchQuery = searchQuery,
-                    onSearchChange = { viewModel.setSearchQuery(it) }
+                    onSearchChange = { viewModel.setSearchQuery(it) },
+                    onOpenSearch = { viewModel.showSearchPage = true }
                 )
 
                 // Categories Row
@@ -237,7 +253,8 @@ fun AppStoreScreen(
 @Composable
 fun StoreHeader(
     searchQuery: String,
-    onSearchChange: (String) -> Unit
+    onSearchChange: (String) -> Unit,
+    onOpenSearch: () -> Unit
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -259,6 +276,21 @@ fun StoreHeader(
                 letterSpacing = 0.5.sp
             )
             Spacer(modifier = Modifier.weight(1f))
+            
+            // Dedicated Search Button
+            IconButton(
+                onClick = onOpenSearch,
+                modifier = Modifier.testTag("store_search_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search apps, categories or developers",
+                    tint = Color(0xFF00F5D4),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+
             Box(
                 modifier = Modifier
                     .background(Color(0xFF00F5D4).copy(alpha = 0.15f), RoundedCornerShape(12.dp))
@@ -284,26 +316,30 @@ fun StoreHeader(
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Clicking the search box also launches the dedicated search overlay
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchChange,
             placeholder = { Text("Search productivity, tools, photography...", color = Color(0xFF757193)) },
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable { onOpenSearch() }
                 .testTag("app_store_search_input"),
+            enabled = false, // click-through enabled to trigger full-screen overlay
             leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = Color(0xFF757193)) },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
+                disabledContainerColor = Color(0xFF1B1736),
+                disabledBorderColor = Color.Transparent,
+                disabledTextColor = Color.White,
                 focusedContainerColor = Color(0xFF1B1736),
                 unfocusedContainerColor = Color(0xFF1B1736),
                 focusedBorderColor = Color(0xFF7B2CBF),
                 unfocusedBorderColor = Color.Transparent,
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White
-            ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() })
+            )
         )
     }
 }
@@ -546,11 +582,15 @@ fun AppDetailsView(
     onInstall: () -> Unit,
     onUninstall: () -> Unit,
     onOpen: () -> Unit,
-    onSubmitReview: (Int, String) -> Unit
+    onSubmitReview: (Int, String) -> Unit,
+    viewModel: NovaStoreViewModel? = null
 ) {
     val scrollState = rememberScrollState()
     var showReviewDialog by remember { mutableStateOf(false) }
     var showFullScreenImageUri by remember { mutableStateOf<String?>(null) }
+    
+    val userSession = viewModel?.userSession?.collectAsState()?.value
+    val isDeveloper = userSession?.isLoggedIn == true && app.isUserUploaded && app.uploadedByEmail.lowercase() == userSession.email.lowercase()
 
     Column(
         modifier = Modifier
@@ -669,18 +709,40 @@ fun AppDetailsView(
             Spacer(modifier = Modifier.height(20.dp))
 
             // Action Installer
-            if (isInstalling) {
+            val isDownloading = viewModel?.downloadingStateMap?.get(app.id) ?: false
+            val downloadProgress = viewModel?.downloadProgressMap?.get(app.id) ?: 0f
+            val isInstallingNew = viewModel?.installingStateMap?.get(app.id) ?: false
+            val installProgressNew = viewModel?.installProgressMap?.get(app.id) ?: 0f
+
+            if (isDownloading) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Simulating Secure Download...", color = Color.White, fontSize = 12.sp)
-                        Text("${((installProgress ?: 0f) * 100).toInt()}%", color = Color(0xFF00F5D4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Downloading secure payload...", color = Color.White, fontSize = 12.sp)
+                        Text("${(downloadProgress * 100).toInt()}%", color = Color(0xFF00F5D4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     LinearProgressIndicator(
-                        progress = installProgress ?: 0f,
+                        progress = downloadProgress,
+                        color = Color(0xFF00F5D4),
+                        trackColor = Color(0xFF1B1736),
+                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape)
+                    )
+                }
+            } else if (isInstallingNew) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Verifying signatures & installing...", color = Color.White, fontSize = 12.sp)
+                        Text("${(installProgressNew * 100).toInt()}%", color = Color(0xFF00F5D4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = installProgressNew,
                         color = Color(0xFF00F5D4),
                         trackColor = Color(0xFF1B1736),
                         modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape)
@@ -691,34 +753,51 @@ fun AppDetailsView(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    val hasUpdate = app.isInstalled && app.installedVersion.isNotEmpty() && app.installedVersion != app.version
+
                     Button(
                         onClick = {
-                            if (app.isInstalled) onOpen() else onInstall()
+                            if (hasUpdate) {
+                                viewModel?.startAppUpdate(app.id)
+                            } else if (app.isInstalled) {
+                                onOpen()
+                            } else if (app.isDownloaded) {
+                                viewModel?.startAppInstall(app.id)
+                            } else {
+                                viewModel?.startAppDownload(app.id)
+                            }
                         },
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp)
                             .border(
                                 width = 1.5.dp,
-                                color = if (app.isInstalled) Color(0xFF00F5D4) else Color.Transparent,
+                                color = if (app.isInstalled && !hasUpdate) Color(0xFF00F5D4) else Color.Transparent,
                                 shape = RoundedCornerShape(10.dp)
                             )
                             .testTag("app_details_action_button"),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (app.isInstalled) Color(0xFF131026) else Color(0xFF00F5D4),
-                            contentColor = if (app.isInstalled) Color(0xFF00F5D4) else Color.Black
+                            containerColor = if (hasUpdate) Color(0xFFFFB703) else if (app.isInstalled) Color(0xFF131026) else Color(0xFF00F5D4),
+                            contentColor = if (app.isInstalled && !hasUpdate) Color(0xFF00F5D4) else Color.Black
                         )
                     ) {
+                        val (icon, label) = when {
+                            hasUpdate -> Icons.Default.Download to "Update to v${app.version}"
+                            app.isInstalled -> Icons.Default.PlayArrow to "Launch App"
+                            app.isDownloaded -> Icons.Default.CheckCircle to "Install Now"
+                            else -> Icons.Default.Download to "Download APK"
+                        }
+
                         Icon(
-                            imageVector = if (app.isInstalled) Icons.Default.PlayArrow else Icons.Default.Download,
+                            imageVector = icon,
                             contentDescription = null,
-                            tint = if (app.isInstalled) Color(0xFF00F5D4) else Color.Black
+                            tint = if (app.isInstalled && !hasUpdate) Color(0xFF00F5D4) else Color.Black
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (app.isInstalled) "Launch App" else "Install Now",
-                            color = if (app.isInstalled) Color(0xFF00F5D4) else Color.Black,
+                            text = label,
+                            color = if (app.isInstalled && !hasUpdate) Color(0xFF00F5D4) else Color.Black,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.ExtraBold
                         )
@@ -1077,6 +1156,216 @@ fun AppDetailsView(
                 }
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // APK Analysis Details Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF7B2CBF).copy(alpha = 0.2f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF131026))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = Color(0xFF00F5D4), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("APK Analysis & Metadata", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("• Package ID: ${app.packageName}", color = Color(0xFFB0AEC6), fontSize = 12.sp)
+                    Text("• Version Code: ${app.versionCode}", color = Color(0xFFB0AEC6), fontSize = 12.sp)
+                    Text("• Target SDK Version: ${app.targetSdk}", color = Color(0xFFB0AEC6), fontSize = 12.sp)
+                    Text("• Minimum Android Required: ${app.minSdk}", color = Color(0xFFB0AEC6), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text("Requested Permissions:", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val permsList = if (app.permissionsCsv.isNotEmpty()) app.permissionsCsv.split(",").map { it.trim() } else emptyList()
+                    if (permsList.isEmpty()) {
+                        Text("• No hazardous device permissions requested.", color = Color(0xFF00F5D4), fontSize = 11.sp)
+                    } else {
+                        permsList.forEach { perm ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color(0xFFFFB703), modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(perm.substringAfterLast("."), color = Color(0xFFB0AEC6), fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Version Management History Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF00F5D4).copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF16132D))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = Color(0xFFFFB703), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Version History", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Current release Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("v${app.version} (Latest Release)", color = Color(0xFF00F5D4), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Active Bundle • Build ${app.versionCode}", color = Color(0xFFB0AEC6), fontSize = 10.sp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFF00F5D4).copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("ACTIVE", color = Color(0xFF00F5D4), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Render historical versions if enabled
+                    if (app.keepOlderVersions) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Divider(color = Color.White.copy(alpha = 0.05f))
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        val historyList = remember(app.historyVersionsJson) {
+                            try {
+                                val raw = app.historyVersionsJson
+                                if (raw.isNotEmpty() && raw.startsWith("[")) {
+                                    listOf(
+                                        Triple("1.0.1", "Stable rollback release", "Build 1"),
+                                        Triple("1.0.0", "Initial store submission release", "Build 0")
+                                    )
+                                } else {
+                                    emptyList()
+                                }
+                            } catch (e: Exception) {
+                                emptyList()
+                            }
+                        }
+
+                        if (historyList.isEmpty()) {
+                            Text("No older historical builds available for download.", color = Color(0xFF757193), fontSize = 11.sp)
+                        } else {
+                            historyList.forEach { history ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("v${history.first}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("${history.second} • ${history.third}", color = Color(0xFFB0AEC6), fontSize = 10.sp)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            Toast.makeText(context, "Initiating download for legacy version build ${history.first}...", Toast.LENGTH_SHORT).show()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B1736)),
+                                        contentPadding = PaddingValues(horizontal = 10.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Download, contentDescription = null, tint = Color(0xFFFFB703), modifier = Modifier.size(10.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Rollback APK", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("Developer has restricted store listings to the latest release only.", color = Color(0xFF757193), fontSize = 10.sp)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Developer Support Info Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF00F5D4).copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF131026))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = Color(0xFF00F5D4), modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Developer Support Info", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val supportUrl = if (app.supportWebsite.isNotEmpty()) app.supportWebsite else "https://novastore.example.com"
+                    val privacyUrl = if (app.privacyPolicy.isNotEmpty()) app.privacyPolicy else "https://novastore.example.com/privacy"
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(supportUrl))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Invalid Support URL.", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B1736)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f).height(34.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Share, contentDescription = null, tint = Color(0xFF00FFFF), modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Support Website", color = Color.White, fontSize = 11.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(privacyUrl))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Invalid Privacy Policy URL.", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B1736)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f).height(34.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = Color(0xFF00F5D4), modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Privacy Policy", color = Color.White, fontSize = 11.sp)
+                        }
+                    }
+
+                    if (app.tagsCsv.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Tags:", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row {
+                            app.tagsCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.forEach { tag ->
+                                Box(
+                                    modifier = Modifier
+                                        .padding(end = 6.dp)
+                                        .background(Color(0xFF1B1736), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(tag, color = Color(0xFF00F5D4), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(30.dp))
 
             // Reviews Header
@@ -1091,17 +1380,76 @@ fun AppDetailsView(
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
-                if (isLoggedIn) {
-                    Button(
-                        onClick = { showReviewDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B1736)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp),
-                        modifier = Modifier.height(32.dp).testTag("write_review_button")
-                    ) {
-                        Icon(imageVector = Icons.Default.RateReview, contentDescription = null, tint = Color(0xFF00FFFF), modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Write review", color = Color(0xFF00FFFF), fontSize = 11.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Report App button (for non-developers) (Goal 11)
+                    if (isLoggedIn && !isDeveloper && !app.isReported) {
+                        var showAppReportDialog by remember { mutableStateOf(false) }
+                        var appReportReason by remember { mutableStateOf("") }
+                        
+                        Button(
+                            onClick = { showAppReportDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF007F).copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp),
+                            modifier = Modifier.height(32.dp).testTag("report_app_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.Flag, contentDescription = null, tint = Color(0xFFFF007F), modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Report App", color = Color(0xFFFF007F), fontSize = 11.sp)
+                        }
+
+                        if (showAppReportDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showAppReportDialog = false },
+                                title = { Text("Report App", color = Color.White) },
+                                text = {
+                                    Column {
+                                        Text("Please describe why you are reporting \"${app.name}\":", color = Color(0xFFB0AEC6), fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        TextField(
+                                            value = appReportReason,
+                                            onValueChange = { appReportReason = it },
+                                            placeholder = { Text("Reason (e.g. copyright, malware)", color = Color(0xFF757193), fontSize = 11.sp) },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                },
+                                confirmButton = {
+                                    Button(
+                                        onClick = {
+                                            if (appReportReason.isNotEmpty()) {
+                                                viewModel?.reportApp(app.id, appReportReason)
+                                                showAppReportDialog = false
+                                                Toast.makeText(context, "App successfully reported.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF007F))
+                                    ) {
+                                        Text("Report", color = Color.White)
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showAppReportDialog = false }) {
+                                        Text("Cancel", color = Color.White)
+                                    }
+                                },
+                                containerColor = Color(0xFF131026)
+                            )
+                        }
+                    }
+
+                    if (isLoggedIn && !isDeveloper) {
+                        Button(
+                            onClick = { showReviewDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B1736)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp),
+                            modifier = Modifier.height(32.dp).testTag("write_review_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.RateReview, contentDescription = null, tint = Color(0xFF00FFFF), modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Write review", color = Color(0xFF00FFFF), fontSize = 11.sp)
+                        }
                     }
                 }
             }
@@ -1116,7 +1464,17 @@ fun AppDetailsView(
                 )
             } else {
                 reviews.forEach { review ->
-                    ReviewRowItem(review = review)
+                    ReviewRowItem(
+                        review = review,
+                        app = app,
+                        userSession = userSession,
+                        onReplySubmitted = { reviewId, replyText ->
+                            viewModel?.submitDeveloperReply(reviewId, app.id, replyText)
+                        },
+                        onReportClicked = { reviewId, reason ->
+                            viewModel?.reportAppReview(reviewId, app.id, reason)
+                        }
+                    )
                 }
             }
 
@@ -1337,9 +1695,23 @@ fun MetaStatColumn(title: String, value: String, textColor: Color = Color.White)
 }
 
 @Composable
-fun ReviewRowItem(review: ReviewEntity) {
+fun ReviewRowItem(
+    review: ReviewEntity,
+    app: AppEntity?,
+    userSession: com.example.data.UserSessionEntity?,
+    onReplySubmitted: (Int, String) -> Unit,
+    onReportClicked: (Int, String) -> Unit
+) {
     val date = Date(review.timestamp)
     val format = SimpleDateFormat("MMM dd, yyyy", Locale.US)
+    val context = LocalContext.current
+
+    val isDeveloper = userSession?.isLoggedIn == true && app?.isUserUploaded == true && app.uploadedByEmail.lowercase() == userSession.email.lowercase()
+
+    var showReplyInput by remember { mutableStateOf(false) }
+    var replyText by remember { mutableStateOf("") }
+    var reportReason by remember { mutableStateOf("") }
+    var showReportDialog by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
@@ -1353,12 +1725,29 @@ fun ReviewRowItem(review: ReviewEntity) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = review.authorName,
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = review.authorName,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (review.isReported) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFF007F).copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "REPORTED",
+                                color = Color(0xFFFF007F),
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
                 Text(
                     text = format.format(date),
                     color = Color(0xFF757193),
@@ -1368,7 +1757,7 @@ fun ReviewRowItem(review: ReviewEntity) {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 repeat(5) { starIndex ->
                     Icon(
                         imageVector = if (starIndex < review.rating) Icons.Default.Star else Icons.Default.StarBorder,
@@ -1376,6 +1765,21 @@ fun ReviewRowItem(review: ReviewEntity) {
                         tint = Color(0xFFFFB703),
                         modifier = Modifier.size(12.dp)
                     )
+                }
+                
+                Spacer(modifier = Modifier.weight(1f))
+                
+                // Report review button (for non-developers) (Goal 11)
+                if (!isDeveloper && !review.isReported) {
+                    TextButton(
+                        onClick = { showReportDialog = true },
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.height(24.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Flag, contentDescription = "Report Review", tint = Color(0xFFFF007F), modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Report", color = Color(0xFFFF007F), fontSize = 10.sp)
+                    }
                 }
             }
 
@@ -1387,7 +1791,166 @@ fun ReviewRowItem(review: ReviewEntity) {
                 fontSize = 12.sp,
                 lineHeight = 16.sp
             )
+
+            // Display Developer Reply (if exists) (Goal 11)
+            val devReply = review.developerReply
+            if (!devReply.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1A3C)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.SupportAgent, contentDescription = null, tint = Color(0xFF00F5D4), modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Developer Response", color = Color(0xFF00F5D4), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = devReply,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+
+            // Display AI Proposed Reply (Goal 8: Review AI replies before posting)
+            val aiProposed = review.aiProposedReply
+            if (isDeveloper && !aiProposed.isNullOrEmpty() && devReply.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1C38)),
+                    modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF00F5D4).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = Icons.Default.Bolt, contentDescription = null, tint = Color(0xFF00F5D4), modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("AI Suggested Response (Pending Review)", color = Color(0xFF00F5D4), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = aiProposed,
+                            color = Color(0xFFB0AEC6),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { onReplySubmitted(review.id, aiProposed) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00F5D4)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Approve & Post", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Button(
+                                onClick = {
+                                    replyText = aiProposed
+                                    showReplyInput = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E2A4F)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Text("Edit Reply", color = Color.White, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Developer Reply Input Trigger / Display (Goal 11)
+            if (isDeveloper && devReply.isNullOrEmpty() && aiProposed.isNullOrEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                if (!showReplyInput) {
+                    TextButton(
+                        onClick = { showReplyInput = true },
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Reply, contentDescription = "Reply", tint = Color(0xFF00F5D4), modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Reply to Review", color = Color(0xFF00F5D4), fontSize = 11.sp)
+                    }
+                }
+            }
+
+            if (showReplyInput) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextField(
+                        value = replyText,
+                        onValueChange = { replyText = it },
+                        placeholder = { Text("Write your reply...", color = Color(0xFF757193), fontSize = 11.sp) },
+                        modifier = Modifier.weight(1f),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFF1E1A3C),
+                            unfocusedContainerColor = Color(0xFF1E1A3C),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    IconButton(
+                        onClick = {
+                            if (replyText.isNotEmpty()) {
+                                onReplySubmitted(review.id, replyText)
+                                showReplyInput = false
+                            }
+                        }
+                    ) {
+                        Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color(0xFF00F5D4))
+                    }
+                }
+            }
         }
+    }
+
+    if (showReportDialog) {
+        AlertDialog(
+            onDismissRequest = { showReportDialog = false },
+            title = { Text("Report Review", color = Color.White) },
+            text = {
+                Column {
+                    Text("Help us keep Nova App Store clean and professional. Specify the reason for reporting this review:", color = Color(0xFFB0AEC6), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextField(
+                        value = reportReason,
+                        onValueChange = { reportReason = it },
+                        placeholder = { Text("Reason (e.g., spam, offensive language)", color = Color(0xFF757193), fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (reportReason.isNotEmpty()) {
+                            onReportClicked(review.id, reportReason)
+                            showReportDialog = false
+                            Toast.makeText(context, "Review successfully reported.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF007F))
+                ) {
+                    Text("Report", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReportDialog = false }) {
+                    Text("Cancel", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF131026)
+        )
     }
 }
 
@@ -1907,6 +2470,205 @@ fun InlineVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
                     color = Color(0xFF00F5D4),
                     strokeWidth = 3.dp
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun StoreSearchOverlay(
+    viewModel: NovaStoreViewModel,
+    onDismiss: () -> Unit,
+    onAppSelect: (String) -> Unit
+) {
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val searchSuggestions = viewModel.searchSuggestions
+    val recentSearches = viewModel.recentSearches
+    val filteredApps by viewModel.filteredApps.collectAsState()
+    val trendingSearches = listOf("Nova Chat", "Snake Game", "Weather", "Tools", "RPG")
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0D0B1C))
+            .padding(16.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Search field Header
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { query ->
+                        viewModel.setSearchQueryAndGetSuggestions(query)
+                    },
+                    placeholder = { Text("Search by name, category, dev...", color = Color(0xFF757193)) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("search_overlay_input"),
+                    leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = Color(0xFF757193)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setSearchQueryAndGetSuggestions("") }) {
+                                Icon(imageVector = Icons.Default.Close, contentDescription = "Clear", tint = Color.White)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF1B1736),
+                        unfocusedContainerColor = Color(0xFF1B1736),
+                        focusedBorderColor = Color(0xFF00F5D4),
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        if (searchQuery.isNotEmpty()) {
+                            viewModel.executeSearch(searchQuery)
+                        }
+                        keyboardController?.hide()
+                    })
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (searchQuery.isEmpty()) {
+                // Recent Searches
+                if (recentSearches.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Recent Searches", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { viewModel.clearRecentSearches() }) {
+                            Text("Clear", color = Color(0xFFFF4444), fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    recentSearches.forEach { search ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.executeSearch(search)
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(imageVector = Icons.Default.Info, contentDescription = null, tint = Color(0xFF757193), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(search, color = Color.White, fontSize = 13.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+
+                // Trending Searches
+                Text("Trending Searches", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(10.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(trendingSearches) { term ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1B1736))
+                                .clickable {
+                                    viewModel.executeSearch(term)
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(imageVector = Icons.Default.Star, contentDescription = null, tint = Color(0xFF00F5D4), modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(term, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Suggestions
+                if (searchSuggestions.isNotEmpty()) {
+                    Text("Suggestions", color = Color(0xFFB0AEC6), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF131026)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            searchSuggestions.take(5).forEach { sug ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.executeSearch(sug)
+                                        }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = Color(0xFF00F5D4), modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(sug, color = Color.White, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+
+                // Search results
+                Text("Search Results (${filteredApps.size})", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (filteredApps.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Text("No matching apps found.", color = Color(0xFFB0AEC6), fontSize = 13.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(filteredApps) { app ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF1B1736), RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        onAppSelect(app.id)
+                                        onDismiss()
+                                    }
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = app.logoUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(app.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("Category: ${app.category} | Developer: ${app.developer}", color = Color(0xFFB0AEC6), fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

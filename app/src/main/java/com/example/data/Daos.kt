@@ -39,6 +39,9 @@ interface ReviewDao {
     @Query("SELECT * FROM reviews WHERE appId = :appId ORDER BY timestamp DESC")
     fun getReviewsForApp(appId: String): Flow<List<ReviewEntity>>
 
+    @Query("SELECT * FROM reviews WHERE appId = :appId ORDER BY timestamp DESC")
+    suspend fun getReviewsForAppDirect(appId: String): List<ReviewEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReview(review: ReviewEntity)
 }
