@@ -235,12 +235,21 @@ fun AppStoreScreen(
                         }
 
                         items(appsOnly) { app ->
+                            val hasUpdate = app.isInstalled && app.installedVersion.isNotEmpty() && app.installedVersion != app.version
                             AppStoreRowItem(
                                 app = app,
-                                installProgress = viewModel.installProgressMap[app.id],
+                                isDownloading = viewModel.downloadingStateMap[app.id] ?: false,
+                                downloadProgress = viewModel.downloadProgressMap[app.id],
                                 isInstalling = viewModel.installingStateMap[app.id] ?: false,
+                                installProgress = viewModel.installProgressMap[app.id],
                                 onClick = { viewModel.selectApp(app.id) },
-                                onInstallClick = { viewModel.simulateAppInstallation(app.id) },
+                                onInstallClick = {
+                                    if (hasUpdate) {
+                                        viewModel.startAppUpdate(app.id)
+                                    } else {
+                                        viewModel.simulateAppInstallation(app.id)
+                                    }
+                                },
                                 onOpenClick = { activeSimulatorAppId = app.id }
                             )
                         }
@@ -385,8 +394,10 @@ fun CategoriesBar(
 @Composable
 fun AppStoreRowItem(
     app: AppEntity,
-    installProgress: Float?,
+    isDownloading: Boolean,
+    downloadProgress: Float?,
     isInstalling: Boolean,
+    installProgress: Float?,
     onClick: () -> Unit,
     onInstallClick: () -> Unit,
     onOpenClick: () -> Unit
@@ -524,46 +535,70 @@ fun AppStoreRowItem(
 
             // Install/Open Button with premium visual feel
             Box(
-                modifier = Modifier.width(72.dp),
+                modifier = Modifier.width(90.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (isInstalling) {
-                    CircularProgressIndicator(
-                        progress = installProgress ?: 0f,
-                        color = Color(0xFF00F5D4),
-                        modifier = Modifier.size(34.dp),
-                        strokeWidth = 3.dp
-                    )
-                } else {
-                    Button(
-                        onClick = {
-                            if (app.isInstalled) {
-                                onOpenClick()
-                            } else {
-                                onInstallClick()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (app.isInstalled) Color(0xFF1B1736) else Color(0xFF7B2CBF)
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(32.dp)
-                            .border(
-                                1.dp,
-                                if (app.isInstalled) Color(0xFF7B2CBF).copy(alpha = 0.4f) else Color.Transparent,
-                                RoundedCornerShape(10.dp)
-                            )
-                    ) {
-                        Text(
-                            text = if (app.isInstalled) "Open" else "Get",
-                            color = if (app.isInstalled) Color(0xFF00F5D4) else Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                val hasUpdate = app.isInstalled && app.installedVersion.isNotEmpty() && app.installedVersion != app.version
+                
+                val buttonText = when {
+                    isDownloading -> {
+                        val pct = if (downloadProgress != null) "${(downloadProgress * 100).toInt()}%" else "0%"
+                        "Downloading ($pct)"
                     }
+                    isInstalling -> {
+                        "Installing..."
+                    }
+                    app.isInstalled -> {
+                        if (hasUpdate) "Update" else "Open"
+                    }
+                    app.isDownloaded -> {
+                        if (hasUpdate) "Install Update" else "Install"
+                    }
+                    else -> {
+                        if (hasUpdate) "Update" else "Install"
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        if (isDownloading || isInstalling) {
+                            // Non-interactive while progress is active
+                        } else if (app.isInstalled) {
+                            if (hasUpdate) {
+                                onInstallClick()
+                            } else {
+                                onOpenClick()
+                            }
+                        } else {
+                            onInstallClick()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = when {
+                            isDownloading || isInstalling -> Color(0xFF131026)
+                            app.isInstalled -> if (hasUpdate) Color(0xFFFFB703) else Color(0xFF1B1736)
+                            else -> Color(0xFF7B2CBF)
+                        }
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .border(
+                            1.dp,
+                            if (app.isInstalled || isDownloading || isInstalling) Color(0xFF7B2CBF).copy(alpha = 0.4f) else Color.Transparent,
+                            RoundedCornerShape(10.dp)
+                        )
+                ) {
+                    Text(
+                        text = buttonText,
+                        color = if (app.isInstalled && !hasUpdate) Color(0xFF00F5D4) else Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -824,7 +859,9 @@ fun AppDetailsView(
 
                     Button(
                         onClick = {
-                            if (hasUpdate) {
+                            if (isDownloadingInteractive || isInstalling) {
+                                // Non-interactive while progress is active
+                            } else if (hasUpdate) {
                                 viewModel?.startAppDownloadInteractive(app.id, app.apkFileName, app.name, app.sizeMb)
                             } else if (app.isInstalled) {
                                 onOpen()
@@ -845,26 +882,39 @@ fun AppDetailsView(
                             .testTag("app_details_action_button"),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (hasUpdate) Color(0xFFFFB703) else if (app.isInstalled) Color(0xFF131026) else Color(0xFF00F5D4),
-                            contentColor = if (app.isInstalled && !hasUpdate) Color(0xFF00F5D4) else Color.Black
+                            containerColor = if (isDownloadingInteractive || isInstalling) Color(0xFF131026) else if (hasUpdate) Color(0xFFFFB703) else if (app.isInstalled) Color(0xFF131026) else Color(0xFF00F5D4),
+                            contentColor = if (app.isInstalled && !hasUpdate || isDownloadingInteractive || isInstalling) Color(0xFF00F5D4) else Color.Black
                         )
                     ) {
                         val (icon, label) = when {
-                            hasUpdate -> Icons.Default.Download to "Update to v${app.version}"
-                            app.isInstalled -> Icons.Default.PlayArrow to "Launch App"
-                            isDownloaded -> Icons.Default.CheckCircle to "Install Now"
-                            else -> Icons.Default.Download to "Download APK"
+                            isDownloadingInteractive -> {
+                                val pct = if (interactiveState != null) "${(interactiveState.progress * 100).toInt()}%" else "0%"
+                                Icons.Default.Download to "Downloading ($pct)"
+                            }
+                            isInstalling -> {
+                                Icons.Default.Download to "Installing..."
+                            }
+                            hasUpdate -> {
+                                if (isDownloaded) {
+                                    Icons.Default.Download to "Install Update"
+                                } else {
+                                    Icons.Default.Download to "Update"
+                                }
+                            }
+                            app.isInstalled -> Icons.Default.PlayArrow to "Open"
+                            isDownloaded -> Icons.Default.CheckCircle to "Install"
+                            else -> Icons.Default.Download to "Install"
                         }
 
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
-                            tint = if (app.isInstalled && !hasUpdate) Color(0xFF00F5D4) else Color.Black
+                            tint = if (app.isInstalled && !hasUpdate || isDownloadingInteractive || isInstalling) Color(0xFF00F5D4) else Color.Black
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = label,
-                            color = if (app.isInstalled && !hasUpdate) Color(0xFF00F5D4) else Color.Black,
+                            color = if (app.isInstalled && !hasUpdate || isDownloadingInteractive || isInstalling) Color(0xFF00F5D4) else Color.Black,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.ExtraBold
                         )

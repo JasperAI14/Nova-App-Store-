@@ -177,12 +177,21 @@ fun GameStoreScreen(
                         }
 
                         items(gamesOnly) { game ->
+                            val hasUpdate = game.isInstalled && game.installedVersion.isNotEmpty() && game.installedVersion != game.version
                             AppStoreRowItem(
                                 app = game,
-                                installProgress = viewModel.installProgressMap[game.id],
+                                isDownloading = viewModel.downloadingStateMap[game.id] ?: false,
+                                downloadProgress = viewModel.downloadProgressMap[game.id],
                                 isInstalling = viewModel.installingStateMap[game.id] ?: false,
+                                installProgress = viewModel.installProgressMap[game.id],
                                 onClick = { viewModel.selectApp(game.id) },
-                                onInstallClick = { viewModel.simulateAppInstallation(game.id) },
+                                onInstallClick = {
+                                    if (hasUpdate) {
+                                        viewModel.startAppUpdate(game.id)
+                                    } else {
+                                        viewModel.simulateAppInstallation(game.id)
+                                    }
+                                },
                                 onOpenClick = { activeGameId = game.id }
                             )
                         }

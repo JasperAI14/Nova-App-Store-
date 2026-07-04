@@ -692,12 +692,21 @@ fun HorizontalAppCardsList(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(apps) { app ->
+                val hasUpdate = app.isInstalled && app.installedVersion.isNotEmpty() && app.installedVersion != app.version
                 PlayStoreAppCard(
                     app = app,
-                    installProgress = viewModel.installProgressMap[app.id],
+                    isDownloading = viewModel.downloadingStateMap[app.id] ?: false,
+                    downloadProgress = viewModel.downloadProgressMap[app.id],
                     isInstalling = viewModel.installingStateMap[app.id] ?: false,
+                    installProgress = viewModel.installProgressMap[app.id],
                     onClick = { onAppSelect(app) },
-                    onInstallClick = { viewModel.simulateAppInstallation(app.id) }
+                    onInstallClick = {
+                        if (hasUpdate) {
+                            viewModel.startAppUpdate(app.id)
+                        } else {
+                            viewModel.simulateAppInstallation(app.id)
+                        }
+                    }
                 )
             }
         }
@@ -707,8 +716,10 @@ fun HorizontalAppCardsList(
 @Composable
 fun PlayStoreAppCard(
     app: AppEntity,
-    installProgress: Float?,
+    isDownloading: Boolean,
+    downloadProgress: Float?,
     isInstalling: Boolean,
+    installProgress: Float?,
     onClick: () -> Unit,
     onInstallClick: () -> Unit
 ) {
@@ -835,40 +846,65 @@ fun PlayStoreAppCard(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                if (isInstalling) {
-                    LinearProgressIndicator(
-                        progress = installProgress ?: 0f,
-                        color = Color(0xFF00F5D4),
-                        trackColor = Color(0xFF261F4D),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                    )
-                } else {
-                    Button(
-                        onClick = { if (!app.isInstalled) onInstallClick() else onClick() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (app.isInstalled) Color(0xFF1B1736) else Color(0xFF7B2CBF)
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(32.dp)
-                            .border(
-                                1.dp,
-                                if (app.isInstalled) Color(0xFF7B2CBF).copy(alpha = 0.4f) else Color.Transparent,
-                                RoundedCornerShape(10.dp)
-                            )
-                    ) {
-                        Text(
-                            text = if (app.isInstalled) "Open" else "Get",
-                            color = if (app.isInstalled) Color(0xFF00F5D4) else Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                val hasUpdate = app.isInstalled && app.installedVersion.isNotEmpty() && app.installedVersion != app.version
+                
+                val buttonText = when {
+                    isDownloading -> {
+                        val pct = if (downloadProgress != null) "${(downloadProgress * 100).toInt()}%" else "0%"
+                        "Downloading ($pct)"
                     }
+                    isInstalling -> {
+                        "Installing..."
+                    }
+                    app.isInstalled -> {
+                        if (hasUpdate) "Update" else "Open"
+                    }
+                    app.isDownloaded -> {
+                        if (hasUpdate) "Install Update" else "Install"
+                    }
+                    else -> {
+                        if (hasUpdate) "Update" else "Install"
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        if (isDownloading || isInstalling) {
+                            // Non-clickable while active
+                        } else if (app.isInstalled) {
+                            if (hasUpdate) {
+                                onInstallClick()
+                            } else {
+                                onClick()
+                            }
+                        } else {
+                            onInstallClick()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = when {
+                            isDownloading || isInstalling -> Color(0xFF131026)
+                            app.isInstalled -> if (hasUpdate) Color(0xFFFFB703) else Color(0xFF1B1736)
+                            else -> Color(0xFF7B2CBF)
+                        }
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .border(
+                            1.dp,
+                            if (app.isInstalled || isDownloading || isInstalling) Color(0xFF7B2CBF).copy(alpha = 0.4f) else Color.Transparent,
+                            RoundedCornerShape(10.dp)
+                        )
+                ) {
+                    Text(
+                        text = buttonText,
+                        color = if (app.isInstalled && !hasUpdate) Color(0xFF00F5D4) else Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
                 }
             }
         }
