@@ -1,0 +1,22 @@
+# Treat all files as text by default, with automatic LF normalization on checkin
+* text=auto
+
+# Explicitly declare text files to normalize
+*.kt text
+*.kts text
+*.xml text
+*.properties text
+*.yml text
+*.md text
+
+# Declare files that must always have LF line endings
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Explicitly mark binary files to prevent corruption during sync or checkout
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.keystore binary
