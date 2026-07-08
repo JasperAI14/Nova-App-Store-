@@ -22,6 +22,19 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Generate debug keystore
+        run: |
+          mkdir -p ~/.android
+          keytool -genkeypair -v \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -keystore ~/.android/debug.keystore \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+
       - name: Make Gradlew Executable
         run: chmod +x gradlew
 
