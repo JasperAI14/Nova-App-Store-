@@ -1,8 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="66dp"
-        android:height="66dp"
-        android:drawable="@drawable/img_nova_logo_1782386944329"
-        android:gravity="center" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Glowing Background Aura/Glow -->
+    <path
+        android:fillColor="#1500F5D4"
+        android:pathData="M54,54m-28,0a28,28 0,1 1,56 0a28,28 0,1 1,-56 0" />
+
+    <!-- Cyber-style Marketplace Shopping Bag Handle -->
+    <path
+        android:strokeColor="#00F5D4"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M44,38 C44,30 64,30 64,38" />
+
+    <!-- Cyber-style Marketplace Shopping Bag Body -->
+    <path
+        android:strokeColor="#00F5D4"
+        android:strokeWidth="3.5"
+        android:strokeLineJoin="round"
+        android:fillColor="#E00D0A1C"
+        android:pathData="M32,38 L76,38 L71,76 L37,76 Z" />
+
+    <!-- Stylized Glowing Play Button inside the bag representing Apps & Games -->
+    <path
+        android:fillColor="#7B2CBF"
+        android:strokeColor="#00F0FF"
+        android:strokeWidth="1.5"
+        android:strokeLineJoin="round"
+        android:pathData="M48,46 L64,54 L48,62 Z" />
+
+    <!-- Abstract Star Sparkle indicating "Nova" -->
+    <path
+        android:fillColor="#00F5D4"
+        android:pathData="M72,32 L73.5,35 L76.5,35.5 L74,37.5 L75,40.5 L72,39 L69,40.5 L70,37.5 L67.5,35.5 L70.5,35 Z" />
+</vector>
