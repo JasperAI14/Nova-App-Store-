@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "325297131621",
+    "project_id": "nova-app-store-3bbd0",
+    "storage_bucket": "nova-app-store-3bbd0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:325297131621:android:88050a4e5797ed7451b68c",
+        "android_client_info": {
+          "package_name": "com.aistudio.novamindappstore.rtpwyk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCnNJ8Yo6apsssZiVxZWzB8iPwYwaa7zIU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
